@@ -1,7 +1,9 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 
+import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export type LoginState = { error?: string }
@@ -38,4 +40,50 @@ export async function logout() {
   const supabase = await createClient()
   await supabase.auth.signOut()
   redirect('/login')
+}
+
+export type UpdateDoctorState = {
+  error?: string
+  success?: string
+}
+
+export async function updateDoctor(
+  _previousState: UpdateDoctorState,
+  formData: FormData,
+): Promise<UpdateDoctorState> {
+  await requireRole('MASTER')
+
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  const displayName = String(formData.get('display_name') ?? '').trim()
+  const status = String(formData.get('status') ?? '')
+  const timezone = String(formData.get('timezone') ?? '').trim()
+
+  if (!doctorId || !displayName) return { error: 'El nombre es obligatorio.' }
+  if (status !== 'ACTIVE' && status !== 'INACTIVE') return { error: 'El estado no es válido.' }
+  if (!timezone) return { error: 'La zona horaria es obligatoria.' }
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format()
+  } catch {
+    return { error: 'La zona horaria no es válida.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('doctors')
+    .update({
+      display_name: displayName,
+      phone: String(formData.get('phone') ?? '').trim() || null,
+      whatsapp: String(formData.get('whatsapp') ?? '').trim() || null,
+      status,
+      timezone,
+      retell_agent_id: String(formData.get('retell_agent_id') ?? '').trim() || null,
+      twilio_phone_number: String(formData.get('twilio_phone_number') ?? '').trim() || null,
+    })
+    .eq('id', doctorId)
+
+  if (error) return { error: 'No se pudo guardar el doctor. Inténtalo de nuevo.' }
+
+  revalidatePath('/master/doctors')
+  return { success: 'Cambios guardados.' }
 }
