@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation'
 
 import { AgendaView } from '@/components/agenda/agenda-view'
 import { resolveMasterAgendaContext } from '@/lib/agenda/context'
+import { getDoctorRecurringUnavailability, getDoctorSchedule } from '@/lib/schedule/doctor-schedule'
+import { listDoctorUnavailability } from '@/lib/unavailability/doctor-unavailability'
+import { listAppointments } from '@/lib/appointments/appointments'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
@@ -22,6 +25,11 @@ export default async function MasterAgendaPage({ params }: MasterAgendaPageProps
   if (error || !doctor) notFound()
 
   const context = resolveMasterAgendaContext(doctor.id, doctor.timezone)
+  const [schedule, recurringUnavailability] = await Promise.all([
+    getDoctorSchedule(doctor.id, context.actorRole),
+    getDoctorRecurringUnavailability(doctor.id),
+  ])
+  const [unavailability, appointments] = await Promise.all([listDoctorUnavailability(doctor.id), listAppointments(doctor.id)])
 
-  return <AgendaView context={context} doctorName={doctor.display_name} />
+  return <AgendaView context={context} doctorName={doctor.display_name} schedule={schedule} recurringUnavailability={recurringUnavailability} unavailability={unavailability} appointments={appointments} />
 }

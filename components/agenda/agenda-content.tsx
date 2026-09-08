@@ -3,27 +3,36 @@
 import { useMemo, useState } from 'react'
 
 import type { AgendaContext } from '@/lib/agenda/context'
-import { getDateInTimezone } from '@/lib/agenda/timezone'
-import {
-  demoAgendaEvents,
-  type DemoAgendaEvent,
-  type DemoAppointmentStatus,
-} from '@/lib/agenda/demo-data'
+import { getDateInTimezone, getDateTimeInTimezone } from '@/lib/agenda/timezone'
+import type { DoctorUnavailability } from '@/lib/unavailability/doctor-unavailability'
+import { UnavailabilityDialog } from '@/components/agenda/unavailability-dialog'
+import { UnavailabilityPanel } from '@/components/agenda/unavailability-panel'
+import { AppointmentCreateDialog } from '@/components/agenda/appointment-create-dialog'
+import { AppointmentDialog } from '@/components/agenda/appointment-dialog'
+import type { Appointment } from '@/lib/appointments/appointments'
 
 type AgendaViewMode = 'day' | 'week' | 'month'
 
 type AgendaContentProps = {
   context: AgendaContext
+  unavailability: DoctorUnavailability[]
+  appointments: Appointment[]
 }
+
+type RealAgendaEvent = {
+  id: string
+  kind: 'unavailability'
+  date: string
+  start: string
+  end: string
+  note: string | null
+  item: DoctorUnavailability
+}
+type RealAppointmentEvent = { id: string; kind: 'appointment'; date: string; start: string; end: string; patient: string; item: Appointment }
+type AgendaEvent = RealAppointmentEvent | RealAgendaEvent
 
 const HOURS = Array.from({ length: 11 }, (_, index) => index + 8)
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
-
-const appointmentStatusLabels: Record<DemoAppointmentStatus, string> = {
-  CONFIRMED: 'Confirmada',
-  PENDING_ADVANCE: 'Pendiente de anticipo',
-  PENDING_CONFIRMATION: 'Pendiente de confirmación',
-}
 
 function cloneDate(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -78,31 +87,42 @@ function formatRange(date: Date, view: AgendaViewMode) {
   return `${startLabel} – ${endLabel}`
 }
 
-function eventForDate(date: Date, event: DemoAgendaEvent) {
-  return event.date === dateKey(date)
+function realEventsForDate(date: Date, timezone: string, items: DoctorUnavailability[]): RealAgendaEvent[] {
+  const key = dateKey(date)
+  return items.flatMap((item) => {
+    const start = getDateTimeInTimezone(timezone, new Date(item.startAt))
+    const end = getDateTimeInTimezone(timezone, new Date(item.endAt))
+    if (key < start.date || key >= end.date && end.time === '00:00') return []
+    if (key < start.date || key > end.date) return []
+    return [{ id: item.id, kind: 'unavailability', date: key, start: key === start.date ? start.time : '00:00', end: key === end.date ? end.time : '24:00', note: item.internalNote, item }]
+  })
 }
 
-function eventsForDate(date: Date) {
-  return demoAgendaEvents.filter((event) => eventForDate(date, event))
+function realAppointmentsForDate(date: Date, timezone: string, appointments: Appointment[]): RealAppointmentEvent[] {
+  const key = dateKey(date)
+  return appointments.filter((item) => item.status === 'CONFIRMED').flatMap((item) => {
+    const start = getDateTimeInTimezone(timezone, new Date(item.startAt))
+    const end = getDateTimeInTimezone(timezone, new Date(item.endAt))
+    return start.date === key ? [{ id: item.id, kind: 'appointment', date: key, start: start.time, end: end.time, patient: item.patientName, item }] : []
+  })
 }
 
-function statusTone(status: DemoAppointmentStatus) {
-  if (status === 'PENDING_ADVANCE') return 'border-amber-200 bg-amber-50 text-amber-950'
-  if (status === 'PENDING_CONFIRMATION') return 'border-sky-200 bg-sky-50 text-sky-950'
-  return 'border-emerald-200 bg-emerald-50 text-emerald-950'
+function eventsForDate(date: Date, timezone: string, items: DoctorUnavailability[], appointments: Appointment[]) {
+  return [...realAppointmentsForDate(date, timezone, appointments), ...realEventsForDate(date, timezone, items)]
 }
 
-function eventTime(event: DemoAgendaEvent) {
+function eventTime(event: AgendaEvent) {
+  if (event.kind === 'unavailability' && event.start === '00:00' && event.end === '24:00') return 'Todo el día'
   return `${event.start}–${event.end}`
 }
 
-function MiniEvent({ event, onSelect }: { event: DemoAgendaEvent; onSelect: (event: DemoAgendaEvent) => void }) {
-  if (event.kind === 'block') {
+function MiniEvent({ event, onSelect }: { event: AgendaEvent; onSelect: (event: AgendaEvent) => void }) {
+  if (event.kind === 'unavailability') {
     return (
-      <div className="rounded-md border border-dashed border-zinc-300 bg-zinc-100 px-2.5 py-2 text-xs text-zinc-600">
-        <p className="font-medium text-zinc-800">{event.label}</p>
+      <button type="button" onClick={() => onSelect(event)} className="w-full rounded-md border border-dashed border-zinc-400 bg-zinc-100 px-2.5 py-2 text-left text-xs text-zinc-700">
+        <p className="font-medium text-zinc-800">{event.note?.trim() || 'No disponible'}</p>
         <p className="mt-0.5">{eventTime(event)}</p>
-      </div>
+      </button>
     )
   }
 
@@ -110,22 +130,23 @@ function MiniEvent({ event, onSelect }: { event: DemoAgendaEvent; onSelect: (eve
     <button
       type="button"
       onClick={() => onSelect(event)}
-      className={`w-full rounded-md border px-2.5 py-2 text-left text-xs ${statusTone(event.status)} focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900`}
+      className="w-full rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
     >
       <p className="font-semibold">{event.patient}</p>
-      <p className="mt-0.5">{event.appointmentType}</p>
       <p className="mt-1 font-medium">{eventTime(event)}</p>
     </button>
   )
 }
 
-function DayAgenda({ date, onSelect }: { date: Date; onSelect: (event: DemoAgendaEvent) => void }) {
-  const events = eventsForDate(date)
+function DayAgenda({ date, timezone, unavailability, appointments, onSelect }: { date: Date; timezone: string; unavailability: DoctorUnavailability[]; appointments: Appointment[]; onSelect: (event: AgendaEvent) => void }) {
+  const events = eventsForDate(date, timezone, unavailability, appointments)
+  const allDayEvents = events.filter((event) => event.kind === 'unavailability' && event.start === '00:00' && event.end === '24:00')
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      {allDayEvents.length ? <div className="border-b border-zinc-100 bg-zinc-50 p-2">{allDayEvents.map((event) => <MiniEvent key={`${event.kind}-${event.id}`} event={event} onSelect={onSelect} />)}</div> : null}
       {HOURS.map((hour) => {
-        const hourEvents = events.filter((event) => Math.floor(parseTime(event.start) / 60) === hour)
+        const hourEvents = events.filter((event) => !(event.kind === 'unavailability' && event.start === '00:00' && event.end === '24:00') && Math.floor(parseTime(event.start) / 60) === hour)
 
         return (
           <div key={hour} className="grid min-h-20 grid-cols-[4.5rem_minmax(0,1fr)] border-b border-zinc-100 last:border-b-0">
@@ -140,7 +161,7 @@ function DayAgenda({ date, onSelect }: { date: Date; onSelect: (event: DemoAgend
   )
 }
 
-function WeekAgenda({ date, today, onSelect }: { date: Date; today: Date; onSelect: (event: DemoAgendaEvent) => void }) {
+function WeekAgenda({ date, today, timezone, unavailability, appointments, onSelect }: { date: Date; today: Date; timezone: string; unavailability: DoctorUnavailability[]; appointments: Appointment[]; onSelect: (event: AgendaEvent) => void }) {
   const weekStart = startOfWeek(date)
 
   return (
@@ -157,7 +178,7 @@ function WeekAgenda({ date, today, onSelect }: { date: Date; today: Date; onSele
                 <p className="mt-1 text-lg font-semibold">{day.getDate()}</p>
               </div>
               <div className="space-y-2 p-2">
-                {eventsForDate(day).map((event) => <MiniEvent key={event.id} event={event} onSelect={onSelect} />)}
+                {eventsForDate(day, timezone, unavailability, appointments).map((event) => <MiniEvent key={`${event.kind}-${event.id}`} event={event} onSelect={onSelect} />)}
               </div>
             </div>
           )
@@ -173,7 +194,7 @@ function monthDays(date: Date) {
   return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
 }
 
-function MonthAgenda({ date, onSelectDay }: { date: Date; onSelectDay: (date: Date) => void }) {
+function MonthAgenda({ date, timezone, unavailability, appointments, onSelectDay, onSelect }: { date: Date; timezone: string; unavailability: DoctorUnavailability[]; appointments: Appointment[]; onSelectDay: (date: Date) => void; onSelect: (event: AgendaEvent) => void }) {
   const days = monthDays(date)
   const month = date.getMonth()
 
@@ -185,26 +206,24 @@ function MonthAgenda({ date, onSelectDay }: { date: Date; onSelectDay: (date: Da
         </div>
         <div className="grid grid-cols-7">
           {days.map((day) => {
-            const dayEvents = eventsForDate(day)
+            const dayEvents = eventsForDate(day, timezone, unavailability, appointments)
             const isOutsideMonth = day.getMonth() !== month
 
             return (
-              <button
+              <div
                 key={dateKey(day)}
-                type="button"
-                onClick={() => onSelectDay(day)}
-                className={`min-h-28 border-b border-r border-zinc-100 p-2 text-left align-top last:border-r-0 hover:bg-zinc-50 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-900 ${isOutsideMonth ? 'bg-zinc-50/60 text-zinc-400' : 'text-zinc-900'}`}
+                className={`min-h-28 border-b border-r border-zinc-100 p-2 text-left align-top last:border-r-0 hover:bg-zinc-50 ${isOutsideMonth ? 'bg-zinc-50/60 text-zinc-400' : 'text-zinc-900'}`}
               >
-                <span className="text-sm font-semibold">{day.getDate()}</span>
+                <button type="button" onClick={() => onSelectDay(day)} className="rounded px-1 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">{day.getDate()}</button>
                 <span className="mt-2 block space-y-1">
                   {dayEvents.slice(0, 2).map((event) => (
-                    <span key={event.id} className={`block truncate rounded px-1.5 py-1 text-[11px] ${event.kind === 'block' ? 'border border-dashed border-zinc-300 text-zinc-500' : statusTone(event.status)}`}>
-                      {event.kind === 'block' ? event.label : event.patient}
-                    </span>
+                    <button type="button" key={`${event.kind}-${event.id}`} onClick={() => onSelect(event)} className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${event.kind === 'unavailability' ? 'border border-dashed border-zinc-300 text-zinc-500' : 'border border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                      {event.kind === 'unavailability' ? event.note?.trim() || 'No disponible' : event.patient}
+                    </button>
                   ))}
                   {dayEvents.length > 2 ? <span className="block px-1.5 text-[11px] text-zinc-400">+{dayEvents.length - 2} más</span> : null}
                 </span>
-              </button>
+              </div>
             )
           })}
         </div>
@@ -213,18 +232,11 @@ function MonthAgenda({ date, onSelectDay }: { date: Date; onSelectDay: (date: Da
   )
 }
 
-function OperationalIndicators({ date }: { date: Date }) {
-  const todayEvents = eventsForDate(date)
-  const appointments = todayEvents.filter((event) => event.kind === 'appointment')
-  const pendingAdvance = demoAgendaEvents.filter((event) => event.kind === 'appointment' && event.status === 'PENDING_ADVANCE').length
-  const pendingConfirmation = demoAgendaEvents.filter((event) => event.kind === 'appointment' && event.status === 'PENDING_CONFIRMATION').length
+function OperationalIndicators({ date, timezone, unavailability, appointments }: { date: Date; timezone: string; unavailability: DoctorUnavailability[]; appointments: Appointment[] }) {
+  const todayEvents = eventsForDate(date, timezone, unavailability, appointments)
+  const todayAppointments = todayEvents.filter((event) => event.kind === 'appointment')
 
-  const indicators = [
-    { label: 'Citas de hoy', value: appointments.length },
-    { label: 'Pendientes de anticipo', value: pendingAdvance },
-    { label: 'Pendientes de confirmación', value: pendingConfirmation },
-    { label: 'Requiere atención', value: pendingAdvance + pendingConfirmation },
-  ]
+  const indicators = [{ label: 'Citas de hoy', value: todayAppointments.length }]
 
   return (
     <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-zinc-200 py-4 sm:grid-cols-4">
@@ -238,38 +250,13 @@ function OperationalIndicators({ date }: { date: Date }) {
   )
 }
 
-function AppointmentDialog({ event, onClose }: { event: Extract<DemoAgendaEvent, { kind: 'appointment' }>; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-zinc-950/30 p-4 sm:items-center" role="presentation" onClick={onClose}>
-      <section role="dialog" aria-modal="true" aria-labelledby="appointment-detail-title" className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl" onClick={(eventClick) => eventClick.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Detalle de cita</p>
-            <h2 id="appointment-detail-title" className="mt-1 text-xl font-semibold text-zinc-950">{event.patient}</h2>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Cerrar detalle" className="rounded-md px-2 py-1 text-xl leading-none text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">×</button>
-        </div>
-        <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-5 gap-y-3 text-sm">
-          <dt className="text-zinc-500">Tipo</dt><dd className="font-medium text-zinc-900">{event.appointmentType}</dd>
-          <dt className="text-zinc-500">Fecha</dt><dd className="font-medium text-zinc-900">{formatDate(new Date(`${event.date}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</dd>
-          <dt className="text-zinc-500">Horario</dt><dd className="font-medium text-zinc-900">{eventTime(event)}</dd>
-          <dt className="text-zinc-500">Estado</dt><dd className="font-medium text-zinc-900">{appointmentStatusLabels[event.status]}</dd>
-        </dl>
-        <div className="mt-7 flex gap-2">
-          <button type="button" disabled className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-400">Reprogramar</button>
-          <button type="button" disabled className="rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-400">Cancelar</button>
-        </div>
-        <p className="mt-3 text-xs text-zinc-400">Las acciones estarán disponibles en una fase posterior.</p>
-      </section>
-    </div>
-  )
-}
-
-export function AgendaContent({ context }: AgendaContentProps) {
+export function AgendaContent({ context, unavailability, appointments }: AgendaContentProps) {
   const today = getDateInTimezone(context.timezone)
   const [view, setView] = useState<AgendaViewMode>('week')
   const [selectedDate, setSelectedDate] = useState(() => getDateInTimezone(context.timezone))
-  const [selectedEvent, setSelectedEvent] = useState<Extract<DemoAgendaEvent, { kind: 'appointment' }> | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<Appointment | null>(null)
+  const [selectedUnavailability, setSelectedUnavailability] = useState<DoctorUnavailability | null>(null)
+  const [newAppointmentOpen, setNewAppointmentOpen] = useState(false)
 
   const rangeLabel = useMemo(() => formatRange(selectedDate, view), [selectedDate, view])
 
@@ -284,20 +271,24 @@ export function AgendaContent({ context }: AgendaContentProps) {
     setView('day')
   }
 
-  function selectEvent(event: DemoAgendaEvent) {
-    if (event.kind === 'appointment') setSelectedEvent(event)
+  function selectEvent(event: AgendaEvent) {
+    if (event.kind === 'appointment') setSelectedEvent(event.item)
+    if (event.kind === 'unavailability') setSelectedUnavailability(event.item)
   }
 
   return (
     <section className="mx-auto max-w-7xl" data-doctor-id={context.doctorId}>
-      <header>
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">Agenda</h1>
-        <p className="mt-2 text-sm text-zinc-600">Organiza tu semana y revisa las citas de tus pacientes.</p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div><h1 className="text-3xl font-semibold tracking-tight text-zinc-950">Agenda</h1><p className="mt-2 text-sm text-zinc-600">Organiza tu semana y revisa las citas de tus pacientes.</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setNewAppointmentOpen(true)} className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">Nueva cita</button>
+          <UnavailabilityPanel doctorId={context.doctorId} timezone={context.timezone} />
+        </div>
       </header>
 
-      <OperationalIndicators date={today} />
+      <OperationalIndicators date={today} timezone={context.timezone} unavailability={unavailability} appointments={appointments} />
 
-      <div className="mt-7 flex flex-col gap-4 border-b border-zinc-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-5">
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setSelectedDate(today)} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">Hoy</button>
           <div className="flex items-center rounded-lg border border-zinc-300 bg-white">
@@ -316,14 +307,14 @@ export function AgendaContent({ context }: AgendaContentProps) {
       </div>
 
       <div className="mt-6">
-        {view === 'day' ? <DayAgenda date={selectedDate} onSelect={selectEvent} /> : null}
-        {view === 'week' ? <WeekAgenda date={selectedDate} today={today} onSelect={selectEvent} /> : null}
-        {view === 'month' ? <MonthAgenda date={selectedDate} onSelectDay={selectMonthDay} /> : null}
+        {view === 'day' ? <DayAgenda date={selectedDate} timezone={context.timezone} unavailability={unavailability} appointments={appointments} onSelect={selectEvent} /> : null}
+        {view === 'week' ? <WeekAgenda date={selectedDate} today={today} timezone={context.timezone} unavailability={unavailability} appointments={appointments} onSelect={selectEvent} /> : null}
+        {view === 'month' ? <MonthAgenda date={selectedDate} timezone={context.timezone} unavailability={unavailability} appointments={appointments} onSelectDay={selectMonthDay} onSelect={selectEvent} /> : null}
       </div>
 
-      <p className="mt-4 text-xs text-zinc-400">Vista demo: las citas y bloqueos mostrados son datos temporales.</p>
-
-      {selectedEvent ? <AppointmentDialog event={selectedEvent} onClose={() => setSelectedEvent(null)} /> : null}
+      {selectedEvent ? <AppointmentDialog appointment={selectedEvent} doctorId={context.doctorId} timezone={context.timezone} onClose={() => setSelectedEvent(null)} /> : null}
+      {newAppointmentOpen ? <AppointmentCreateDialog doctorId={context.doctorId} onClose={() => setNewAppointmentOpen(false)} /> : null}
+      {selectedUnavailability ? <UnavailabilityDialog item={selectedUnavailability} doctorId={context.doctorId} timezone={context.timezone} onClose={() => setSelectedUnavailability(null)} /> : null}
     </section>
   )
 }

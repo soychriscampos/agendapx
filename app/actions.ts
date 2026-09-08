@@ -3,7 +3,15 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
-import { requireRole } from '@/lib/auth'
+import { getCurrentUser, requireRole } from '@/lib/auth'
+import { createDoctorUnavailability, deleteDoctorUnavailability, updateDoctorUnavailability, type UnavailabilityMutationResult } from '@/lib/unavailability/doctor-unavailability'
+import type { AppointmentConflict } from '@/lib/appointments/appointments'
+import { cancelAppointment, createAppointment, updateAppointment, type AppointmentInput } from '@/lib/appointments/appointments'
+import {
+  replaceDoctorRecurringUnavailability,
+  replaceDoctorSchedule,
+  type DoctorSchedule,
+} from '@/lib/schedule/doctor-schedule'
 import { createClient } from '@/lib/supabase/server'
 
 export type LoginState = { error?: string }
@@ -86,4 +94,197 @@ export async function updateDoctor(
 
   revalidatePath('/master/doctors')
   return { success: 'Cambios guardados.' }
+}
+
+export type SaveDoctorScheduleState = {
+  error?: string
+  success?: string
+}
+
+function validateSchedule(value: unknown, label = 'horario', allowOverlaps = false, allowDuplicateDays = false): DoctorSchedule {
+  if (!Array.isArray(value)) throw new Error(`La configuración del ${label} no es válida.`)
+
+  const seenDays = new Set<number>()
+  const exactRanges = new Set<string>()
+  const schedule: DoctorSchedule = []
+  const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+
+  for (const day of value) {
+    if (!day || typeof day !== 'object' || !('weekday' in day) || !('ranges' in day)) {
+      throw new Error(`La configuración del ${label} no es válida.`)
+    }
+
+    const weekday = day.weekday
+    const ranges = day.ranges
+    if (typeof weekday !== 'number' || !Number.isInteger(weekday) || weekday < 1 || weekday > 7 || (!allowDuplicateDays && seenDays.has(weekday)) || !Array.isArray(ranges)) {
+      throw new Error(`Cada día debe tener una configuración válida para ${label}.`)
+    }
+    seenDays.add(weekday)
+
+    const parsedRanges = ranges.map((range: unknown) => {
+      if (!range || typeof range !== 'object' || !('start' in range) || !('end' in range) || typeof range.start !== 'string' || typeof range.end !== 'string' || !timePattern.test(range.start) || !timePattern.test(range.end) || range.start >= range.end) {
+        throw new Error(`Cada rango de ${label} debe tener horas válidas y no cruzar medianoche.`)
+      }
+      return { start: range.start, end: range.end }
+    })
+
+    for (const range of parsedRanges) {
+      const key = `${weekday}-${range.start}-${range.end}`
+      if (exactRanges.has(key)) throw new Error(`No se permiten rangos duplicados en ${label}.`)
+      exactRanges.add(key)
+    }
+
+    if (!allowOverlaps) {
+      const sortedRanges = [...parsedRanges].sort((a, b) => a.start.localeCompare(b.start))
+      for (let index = 1; index < sortedRanges.length; index += 1) {
+        if (sortedRanges[index - 1].end > sortedRanges[index].start) {
+          throw new Error('Los horarios del mismo día no pueden solaparse.')
+        }
+      }
+    }
+
+    if (parsedRanges.length) schedule.push({ weekday, ranges: parsedRanges })
+  }
+
+  return schedule.sort((a, b) => a.weekday - b.weekday)
+}
+
+export async function saveDoctorScheduleSettings(
+  _previousState: SaveDoctorScheduleState,
+  formData: FormData,
+): Promise<SaveDoctorScheduleState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) {
+    return { error: 'No tienes permiso para modificar horarios.' }
+  }
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  const rawSchedule = String(formData.get('schedule') ?? '')
+  const rawRecurring = String(formData.get('recurring_unavailability') ?? '[]')
+
+  try {
+    if (!doctorId || !rawSchedule) throw new Error('El horario es obligatorio.')
+    const schedule = validateSchedule(JSON.parse(rawSchedule))
+    const recurringInput: unknown = JSON.parse(rawRecurring)
+    const recurringSchedule = validateSchedule(recurringInput, 'indisponibilidad recurrente', true, true)
+      .map((day, index) => {
+        const rawDay = Array.isArray(recurringInput) ? recurringInput[index] : null
+        const note = rawDay && typeof rawDay === 'object' && 'internalNote' in rawDay && typeof rawDay.internalNote === 'string'
+          ? rawDay.internalNote.trim()
+          : ''
+        return { ...day, internalNote: note || null }
+      })
+    await replaceDoctorSchedule(user, doctorId, schedule)
+    await replaceDoctorRecurringUnavailability(user, doctorId, recurringSchedule)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'No se pudo guardar el horario.' }
+  }
+
+  revalidatePath('/app/assistant')
+  revalidatePath(`/master/doctors/${doctorId}/agenda`)
+  return { success: 'Horarios guardados correctamente.' }
+}
+
+export type UnavailabilityActionState = { error?: string; success?: string; appointments?: AppointmentConflict[] }
+
+function unavailabilityConflict(result: UnavailabilityMutationResult): UnavailabilityActionState | null {
+  return result.ok ? null : { error: 'Hay citas agendadas dentro de este periodo.', appointments: result.appointments }
+}
+
+export async function createDoctorUnavailabilityAction(
+  _previousState: UnavailabilityActionState,
+  formData: FormData,
+): Promise<UnavailabilityActionState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
+  try {
+    const result = await createDoctorUnavailability(user, String(formData.get('doctor_id') ?? ''), {
+      mode: String(formData.get('mode') ?? '') as 'HOURS' | 'DAYS',
+      dateFrom: String(formData.get('date_from') ?? ''),
+      dateTo: String(formData.get('date_to') ?? ''),
+      start: String(formData.get('start') ?? ''),
+      end: String(formData.get('end') ?? ''),
+      internalNote: String(formData.get('internal_note') ?? ''),
+    })
+    const conflict = unavailabilityConflict(result)
+    if (conflict) return conflict
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'No se pudo guardar la indisponibilidad.' }
+  }
+  revalidatePath('/app/agenda')
+  revalidatePath(`/master/doctors/${String(formData.get('doctor_id') ?? '')}/agenda`)
+  return { success: 'Indisponibilidad guardada.' }
+}
+
+export async function deleteDoctorUnavailabilityAction(formData: FormData) {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) throw new Error('No tienes permiso para modificar la agenda.')
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  await deleteDoctorUnavailability(user, doctorId, String(formData.get('id') ?? ''))
+  revalidatePath('/app/agenda')
+  revalidatePath(`/master/doctors/${doctorId}/agenda`)
+}
+
+export async function updateDoctorUnavailabilityAction(formData: FormData): Promise<UnavailabilityActionState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  try {
+    const result = await updateDoctorUnavailability(user, doctorId, {
+      id: String(formData.get('id') ?? ''),
+      mode: String(formData.get('mode') ?? '') as 'HOURS' | 'DAYS',
+      dateFrom: String(formData.get('date_from') ?? ''),
+      dateTo: String(formData.get('date_to') ?? ''),
+      start: String(formData.get('start') ?? ''),
+      end: String(formData.get('end') ?? ''),
+      internalNote: String(formData.get('internal_note') ?? ''),
+    })
+    const conflict = unavailabilityConflict(result)
+    if (conflict) return conflict
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'No se pudo actualizar la indisponibilidad.' }
+  }
+  revalidatePath('/app/agenda')
+  revalidatePath(`/master/doctors/${doctorId}/agenda`)
+  return { success: 'Indisponibilidad actualizada.' }
+}
+
+export type AppointmentActionState = { error?: string; success?: string }
+
+function appointmentInput(formData: FormData): AppointmentInput {
+  return {
+    patientName: String(formData.get('patient_name') ?? ''),
+    date: String(formData.get('date') ?? ''),
+    start: String(formData.get('start') ?? ''),
+    end: String(formData.get('end') ?? ''),
+  }
+}
+
+export async function createAppointmentAction(_previousState: AppointmentActionState, formData: FormData): Promise<AppointmentActionState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
+  try { await createAppointment(user, String(formData.get('doctor_id') ?? ''), appointmentInput(formData)) }
+  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la cita.' } }
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
+  return { success: 'Cita creada.' }
+}
+
+export async function updateAppointmentAction(_previousState: AppointmentActionState, formData: FormData): Promise<AppointmentActionState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
+  try { await updateAppointment(user, String(formData.get('doctor_id') ?? ''), String(formData.get('id') ?? ''), appointmentInput(formData)) }
+  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo reprogramar la cita.' } }
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
+  return { success: 'Cita reprogramada.' }
+}
+
+export async function cancelAppointmentAction(formData: FormData): Promise<AppointmentActionState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
+  const doctorId = String(formData.get('doctor_id') ?? '')
+  try { await cancelAppointment(user, doctorId, String(formData.get('id') ?? '')) }
+  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo cancelar la cita.' } }
+  revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
+  return { success: 'Cita cancelada.' }
 }

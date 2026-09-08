@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Mantiene los controles de fecha, hora y notas iguales en agenda y horarios. */
+input[type='date'],
+input[type='time'],
+textarea {
+  background-color: #fff;
+}
