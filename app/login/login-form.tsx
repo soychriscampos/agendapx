@@ -9,7 +9,7 @@ const initialState: LoginState = {}
 export function LoginForm({ initialError }: { initialError?: string }) {
   const [state, formAction, pending] = useActionState(login, initialState)
   const error = state.error ?? (initialError === 'profile'
-    ? 'Tu sesión no tiene un perfil de AgendaPX habilitado.'
+    ? 'Tu sesión no tiene un perfil de HelloPx habilitado.'
     : undefined)
 
   return (

@@ -24,7 +24,7 @@ export type DemoAgendaEvent =
     }
 
 // Demo-only data. It is intentionally kept outside the visual components so it
-// can later be replaced by calendar data without changing the agenda UI.
+// can later be replaced by persisted agenda data without changing the agenda UI.
 export const demoAgendaEvents: DemoAgendaEvent[] = [
   {
     id: 'appointment-1',
@@ -83,4 +83,3 @@ export const demoAgendaEvents: DemoAgendaEvent[] = [
     label: 'Vacaciones',
   },
 ]
-

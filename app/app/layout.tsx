@@ -7,10 +7,10 @@ import { requireRole } from '@/lib/auth'
 
 export const metadata: Metadata = {
   title: {
-    default: 'AgendaPX',
-    template: '%s · AgendaPX',
+    default: 'HelloPx',
+    template: '%s · HelloPx',
   },
-  description: 'Espacio de trabajo del doctor en AgendaPX',
+  description: 'Espacio de trabajo del doctor en HelloPx',
 }
 
 export default async function DoctorLayout({ children }: { children: ReactNode }) {
@@ -20,7 +20,7 @@ export default async function DoctorLayout({ children }: { children: ReactNode }
     <div className="min-h-screen bg-zinc-50 text-zinc-950 md:flex md:h-screen md:overflow-hidden">
       <aside className="border-b border-zinc-200 bg-white md:flex md:h-full md:w-64 md:shrink-0 md:flex-col md:overflow-hidden md:border-b-0 md:border-r">
         <div className="px-5 py-5 md:px-6 md:py-7">
-          <p className="text-base font-semibold tracking-tight text-zinc-950">AgendaPX</p>
+          <p className="text-base font-semibold tracking-tight text-zinc-950">HelloPx</p>
           <p className="mt-1 text-xs text-zinc-500">Espacio del doctor</p>
           <DoctorNavigation />
         </div>

@@ -34,7 +34,7 @@ export async function login(_previousState: LoginState, formData: FormData): Pro
 
   if (profileError || !profile) {
     await supabase.auth.signOut()
-    return { error: 'Tu cuenta aún no tiene un perfil de AgendaPX habilitado.' }
+    return { error: 'Tu cuenta aún no tiene un perfil de HelloPx habilitado.' }
   }
 
   if (profile.role === 'MASTER') redirect('/master/doctors')

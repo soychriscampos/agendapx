@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgendaPX",
+  title: "HelloPx",
   description: "Agenda médica",
 };
 

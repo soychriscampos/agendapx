@@ -27,7 +27,7 @@ export function AgendaView({ context, doctorName, schedule, recurringUnavailabil
       <div className="mx-auto max-w-7xl">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <p className="text-sm font-semibold tracking-wide text-zinc-500">AgendaPX · MASTER</p>
+            <p className="text-sm font-semibold tracking-wide text-zinc-500">HelloPx · MASTER</p>
             <h1 className="mt-2 text-3xl font-semibold text-zinc-950">Agenda</h1>
             <p className="mt-2 text-sm text-zinc-600">Administrando: {doctorName}</p>
             <p className="mt-1 font-mono text-xs text-zinc-500">doctor_id: {context.doctorId}</p>

@@ -15,7 +15,7 @@ export default async function AssistantPage() {
   return (
     <section className="space-y-8">
       <DoctorPlaceholder
-        eyebrow="AgendaPX · DOCTOR"
+        eyebrow="HelloPx · DOCTOR"
         title="Mi asistente"
         description="Configura lo que tu asistente necesita saber para ayudarte con la atención de tus pacientes."
       />

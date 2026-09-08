@@ -1,6 +1,6 @@
-# AgendaPX — Database Schema
+# HelloPx — Database Schema
 
-Estado actual del esquema de base de datos de AgendaPX.
+Estado actual del esquema de base de datos de HelloPx.
 
 Este documento describe el modelo vigente de forma legible.
 
@@ -14,7 +14,7 @@ La fuente de verdad ejecutable se encuentra en:
 
 Supabase Auth administra autenticación.
 
-AgendaPX mantiene los datos de aplicación y autorización en `public.users`.
+HelloPx mantiene los datos de aplicación y autorización en `public.users`.
 
 La relación es 1:1:
 
@@ -29,7 +29,7 @@ El rol y el tenant no se obtienen de `user_metadata`.
 
 ### MASTER
 
-Usuario administrativo de AgendaPX.
+Usuario administrativo de HelloPx.
 
 - No pertenece a un doctor.
 - `doctor_id` debe ser `NULL`.
@@ -46,9 +46,9 @@ Usuario perteneciente a un tenant.
 
 ## doctors
 
-Representa un tenant de AgendaPX.
+Representa un tenant de HelloPx.
 
-No representa exclusivamente a una persona física; representa la cuenta o consultorio operado dentro de AgendaPX.
+No representa exclusivamente a una persona física; representa la cuenta o consultorio operado dentro de HelloPx.
 
 | Column | Type | Constraints |
 |---|---|---|
@@ -177,7 +177,7 @@ Estas funciones son utilizadas exclusivamente para resolver autorización dentro
 
 ### foundation_identity_and_tenancy
 
-Primera fundación multi-tenant de AgendaPX.
+Primera fundación multi-tenant de HelloPx.
 
 Incluye:
 

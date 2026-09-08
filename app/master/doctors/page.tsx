@@ -20,7 +20,7 @@ export default async function MasterDoctorsPage() {
       <div className="mx-auto max-w-[1500px]">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <p className="text-sm font-semibold tracking-wide text-zinc-500">AgendaPX · MASTER</p>
+            <p className="text-sm font-semibold tracking-wide text-zinc-500">HelloPx · MASTER</p>
             <h1 className="mt-2 text-3xl font-semibold text-zinc-950">Doctores</h1>
             <p className="mt-2 text-sm text-zinc-600">Hola, {user.full_name}. Configuración operativa de los doctores registrados.</p>
           </div>
