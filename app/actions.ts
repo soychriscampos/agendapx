@@ -13,6 +13,7 @@ import {
   type DoctorSchedule,
 } from '@/lib/schedule/doctor-schedule'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export type LoginState = { error?: string }
 
@@ -38,7 +39,20 @@ export async function login(_previousState: LoginState, formData: FormData): Pro
   }
 
   if (profile.role === 'MASTER') redirect('/master/doctors')
-  if (profile.role === 'DOCTOR' && profile.doctor_id) redirect('/app/agenda')
+  if (profile.role === 'DOCTOR' && profile.doctor_id) {
+    const { data: doctor, error: doctorError } = await supabase
+      .from('doctors')
+      .select('onboarding_completed')
+      .eq('id', profile.doctor_id)
+      .maybeSingle()
+
+    if (doctorError || !doctor) {
+      await supabase.auth.signOut()
+      return { error: 'El perfil de tu cuenta no tiene una configuración válida.' }
+    }
+
+    redirect(doctor.onboarding_completed ? '/app/agenda' : '/onboarding')
+  }
 
   await supabase.auth.signOut()
   return { error: 'El perfil de tu cuenta no tiene una configuración válida.' }
@@ -50,9 +64,173 @@ export async function logout() {
   redirect('/login')
 }
 
+export type InviteDoctorState = {
+  error?: string
+  success?: string
+}
+
+function isExistingAuthUserError(message: string) {
+  const normalized = message.toLowerCase()
+  return normalized.includes('already registered') || normalized.includes('already exists') || normalized.includes('email_exists') || normalized.includes('duplicate')
+}
+
+const allowedInviteTimezones = [
+  'America/Tijuana',
+  'America/Hermosillo',
+  'America/Mazatlan',
+  'America/Chihuahua',
+  'America/Monterrey',
+  'America/Mexico_City',
+  'America/Cancun',
+] as const
+
+export async function inviteDoctor(
+  _previousState: InviteDoctorState,
+  formData: FormData,
+): Promise<InviteDoctorState> {
+  await requireRole('MASTER')
+
+  const displayName = String(formData.get('display_name') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const phone = String(formData.get('phone') ?? '').trim()
+  const sameAsWhatsapp = formData.get('same_as_whatsapp') === 'true'
+  const whatsapp = sameAsWhatsapp ? phone : String(formData.get('whatsapp') ?? '').trim()
+  const timezone = String(formData.get('timezone') ?? '').trim()
+
+  if (!displayName) return { error: 'Escribe el nombre del doctor.' }
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { error: 'Escribe un correo válido.' }
+  if (!phone) return { error: 'Escribe el teléfono del doctor.' }
+  if (!whatsapp) return { error: 'Escribe el WhatsApp del doctor.' }
+  if (!allowedInviteTimezones.includes(timezone as (typeof allowedInviteTimezones)[number])) return { error: 'Selecciona una zona horaria válida.' }
+
+  const appUrl = process.env.APP_URL
+  if (!appUrl) return { error: 'La configuración de invitaciones no está disponible.' }
+
+  const redirectTo = new URL('/auth/invite', appUrl).toString()
+  const admin = createAdminClient()
+  let doctorId: string | null = null
+  let authUserId: string | null = null
+
+  try {
+    const { data: doctor, error: doctorError } = await admin
+      .from('doctors')
+      .insert({ display_name: displayName, phone, whatsapp, timezone, onboarding_completed: false })
+      .select('id')
+      .single()
+
+    if (doctorError || !doctor) return { error: 'No se pudo crear el doctor. Inténtalo de nuevo.' }
+    doctorId = doctor.id
+
+    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo })
+    if (inviteError || !inviteData.user) {
+      await admin.from('doctors').delete().eq('id', doctorId)
+      if (inviteError && isExistingAuthUserError(inviteError.message)) {
+        return { error: 'Ya existe una cuenta asociada a este correo.' }
+      }
+      return { error: 'No se pudo enviar la invitación. Inténtalo de nuevo.' }
+    }
+    authUserId = inviteData.user.id
+
+    const { error: profileError } = await admin.from('users').insert({
+      id: authUserId,
+      doctor_id: doctorId,
+      role: 'DOCTOR',
+      full_name: displayName,
+    })
+
+    if (profileError) {
+      await admin.auth.admin.deleteUser(authUserId)
+      await admin.from('doctors').delete().eq('id', doctorId)
+      return { error: 'No se pudo completar la invitación. Inténtalo de nuevo.' }
+    }
+
+    revalidatePath('/master/doctors')
+    return { success: 'Invitación enviada.' }
+  } catch {
+    if (authUserId) await admin.auth.admin.deleteUser(authUserId)
+    if (doctorId) await admin.from('doctors').delete().eq('id', doctorId)
+    return { error: 'No se pudo completar la invitación. Inténtalo de nuevo.' }
+  }
+}
+
+export type InvitePasswordState = {
+  error?: string
+}
+
+export async function setInvitePassword(
+  _previousState: InvitePasswordState,
+  formData: FormData,
+): Promise<InvitePasswordState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) {
+    return { error: 'Esta invitación ya no está disponible.' }
+  }
+
+  const password = String(formData.get('password') ?? '')
+  const confirmation = String(formData.get('password_confirmation') ?? '')
+
+  if (password.length < 8) return { error: 'La contraseña debe tener al menos 8 caracteres.' }
+  if (password !== confirmation) return { error: 'Las contraseñas no coinciden.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) return { error: 'No se pudo crear la contraseña. Inténtalo de nuevo.' }
+
+  redirect('/onboarding')
+}
+
+export type CompleteOnboardingState = {
+  error?: string
+}
+
+export async function completeDoctorOnboarding(): Promise<CompleteOnboardingState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) {
+    return { error: 'No se pudo completar la configuración del doctor.' }
+  }
+
+  if (user.onboarding_completed) return {}
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('complete_doctor_onboarding')
+  if (error) return { error: 'No se pudo completar la configuración. Inténtalo de nuevo.' }
+
+  revalidatePath('/onboarding')
+  revalidatePath('/app/agenda')
+  revalidatePath('/')
+  return {}
+}
+
 export type UpdateDoctorState = {
   error?: string
   success?: string
+}
+
+export async function updateDoctorProfile(
+  formData: FormData,
+): Promise<UpdateDoctorState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) {
+    return { error: 'No se pudo guardar la información del doctor.' }
+  }
+
+  const displayName = String(formData.get('p_display_name') ?? '').trim()
+  const specialty = String(formData.get('p_specialty') ?? '').trim()
+  const address = String(formData.get('p_address') ?? '').trim()
+  if (!displayName) return { error: 'El nombre del doctor es obligatorio.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('update_doctor_profile', {
+    p_display_name: displayName,
+    p_specialty: specialty || null,
+    p_address: address || null,
+  })
+
+  if (error) return { error: 'No se pudo guardar la información del doctor.' }
+
+  revalidatePath('/onboarding')
+  revalidatePath('/app/assistant')
+  return { success: 'Información del doctor guardada.' }
 }
 
 export async function updateDoctor(

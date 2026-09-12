@@ -1,4 +1,5 @@
 import { logout } from '@/app/actions'
+import { InviteDoctor } from '@/app/master/doctors/invite-doctor'
 import { DoctorTable } from '@/app/master/doctors/doctor-table'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
@@ -29,6 +30,10 @@ export default async function MasterDoctorsPage() {
           </form>
         </header>
         <section className="mt-8 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between gap-4 border-b border-zinc-200 px-6 py-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Doctores registrados</h2>
+            <InviteDoctor />
+          </div>
           <DoctorTable doctors={(doctors ?? []).map((doctor) => ({ ...doctor, status: doctor.status as 'ACTIVE' | 'INACTIVE' }))} />
         </section>
       </div>

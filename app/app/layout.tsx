@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
+import { redirect } from 'next/navigation'
 
 import { logout } from '@/app/actions'
 import { DoctorNavigation } from '@/components/doctor/doctor-navigation'
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 
 export default async function DoctorLayout({ children }: { children: ReactNode }) {
   const user = await requireRole('DOCTOR')
+  if (!user.onboarding_completed) redirect('/onboarding')
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 md:flex md:h-screen md:overflow-hidden">

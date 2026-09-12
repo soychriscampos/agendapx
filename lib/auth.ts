@@ -9,6 +9,7 @@ export type AgendaUser = {
   doctor_id: string | null
   role: UserRole
   full_name: string
+  onboarding_completed: boolean | null
 }
 
 export async function getCurrentUser(): Promise<AgendaUser | null> {
@@ -25,11 +26,24 @@ export async function getCurrentUser(): Promise<AgendaUser | null> {
 
   if (error || !data) return null
 
+  let onboardingCompleted: boolean | null = null
+  if (data.role === 'DOCTOR' && data.doctor_id) {
+    const { data: doctor, error: doctorError } = await supabase
+      .from('doctors')
+      .select('onboarding_completed')
+      .eq('id', data.doctor_id)
+      .maybeSingle()
+
+    if (doctorError || !doctor) return null
+    onboardingCompleted = doctor.onboarding_completed
+  }
+
   return {
     id: data.id,
     doctor_id: data.doctor_id,
     role: data.role as UserRole,
     full_name: data.full_name,
+    onboarding_completed: onboardingCompleted,
   }
 }
 
@@ -47,5 +61,5 @@ export async function redirectAuthenticatedUser() {
   const user = await getCurrentUser()
 
   if (user?.role === 'MASTER') redirect('/master/doctors')
-  if (user?.role === 'DOCTOR' && user.doctor_id) redirect('/app/agenda')
+  if (user?.role === 'DOCTOR' && user.doctor_id) redirect(user.onboarding_completed ? '/app/agenda' : '/onboarding')
 }

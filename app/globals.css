@@ -1,5 +1,39 @@
 @import "tailwindcss";
 
+@keyframes onboarding-step-forward {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes onboarding-step-back {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes onboarding-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+html[data-onboarding-direction='forward'] main section,
+html[data-onboarding-direction='forward'] main > section {
+  animation: onboarding-step-forward 300ms ease-out;
+}
+
+html[data-onboarding-direction='back'] main section,
+html[data-onboarding-direction='back'] main > section {
+  animation: onboarding-step-back 300ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-onboarding-direction='forward'] main section,
+  html[data-onboarding-direction='forward'] main > section,
+  html[data-onboarding-direction='back'] main section,
+  html[data-onboarding-direction='back'] main > section {
+    animation: none;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
