@@ -1,5 +1,6 @@
 import { addLocalDays, localDateTimeToUtc } from '@/lib/agenda/timezone'
 import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type AvailableSlotsInput = {
   doctorId: string
@@ -78,7 +79,7 @@ export function calculateAvailableSlots({ dateFrom, dateTo, timezone, durationMi
   return slots
 }
 
-export async function getAvailableSlots(input: AvailableSlotsInput): Promise<AvailableSlotsResult> {
+export async function getAvailableSlots(input: AvailableSlotsInput, providedSupabase?: SupabaseClient): Promise<AvailableSlotsResult> {
   assertDate(input.dateFrom, 'dateFrom'); assertDate(input.dateTo, 'dateTo')
   if (input.dateTo < input.dateFrom) throw new Error('El rango de fechas no es válido.')
   if (datesBetween(input.dateFrom, input.dateTo).length > 31) throw new Error('El rango máximo es de 31 días.')
@@ -86,7 +87,7 @@ export async function getAvailableSlots(input: AvailableSlotsInput): Promise<Ava
   const slotIntervalMinutes = input.slotIntervalMinutes ?? 30
   if (!Number.isInteger(slotIntervalMinutes) || slotIntervalMinutes <= 0 || slotIntervalMinutes > 480) throw new Error('El intervalo de slots no es válido.')
 
-  const supabase = await createClient()
+  const supabase = providedSupabase ?? await createClient()
   const { data: doctor, error: doctorError } = await supabase.from('doctors').select('timezone').eq('id', input.doctorId).maybeSingle()
   if (doctorError || !doctor) throw new Error('El doctor seleccionado no existe.')
   const timezone = doctor.timezone
