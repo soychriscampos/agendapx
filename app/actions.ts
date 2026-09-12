@@ -14,6 +14,8 @@ import {
 } from '@/lib/schedule/doctor-schedule'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createManualAppointmentRequest, createAppointmentRequestForExistingContact, createAppointmentRequestForNewPatient, lookupContactByPhone, type ExistingContactLookup, type RequestIntakeAnswer } from '@/lib/requests/appointment-requests'
+import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 
 export type LoginState = { error?: string }
 
@@ -465,4 +467,67 @@ export async function cancelAppointmentAction(formData: FormData): Promise<Appoi
   catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo cancelar la cita.' } }
   revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
   return { success: 'Cita cancelada.' }
+}
+
+export type AppointmentRequestActionState = { error?: string; success?: string; requestId?: string }
+
+function requestIntakeAnswers(formData: FormData): RequestIntakeAnswer[] {
+  const raw = String(formData.get('intake_answers') ?? '[]')
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { throw new Error('Las respuestas de intake no son válidas.') }
+  if (!Array.isArray(parsed)) throw new Error('Las respuestas de intake no son válidas.')
+  return parsed.map((item) => {
+    if (!item || typeof item !== 'object') throw new Error('Las respuestas de intake no son válidas.')
+    const answer = item as Record<string, unknown>
+    const fieldKey = typeof answer.field_key === 'string' ? answer.field_key.trim() : ''
+    const fieldLabel = typeof answer.field_label === 'string' ? answer.field_label.trim() : ''
+    const value = typeof answer.value === 'string' ? answer.value.trim() : null
+    const required = answer.required === true
+    if (!fieldKey || !fieldLabel || (required && !value)) throw new Error(`Completa el campo "${fieldLabel || fieldKey}".`)
+    return { intake_field_id: typeof answer.intake_field_id === 'string' ? answer.intake_field_id : null, field_key: fieldKey, field_label: fieldLabel, value }
+  })
+}
+
+export type ContactLookupActionState = { error?: string; contact?: ExistingContactLookup | null }
+
+export async function lookupContactByPhoneAction(formData: FormData): Promise<ContactLookupActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para buscar contactos.' }
+  try {
+    const phoneE164 = normalizePhoneToE164(String(formData.get('phone_e164') ?? ''))
+    const contact = await lookupContactByPhone(user.doctor_id, phoneE164)
+    return { contact }
+  } catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo buscar el teléfono.' } }
+}
+
+export async function createManualAppointmentRequestAction(_previousState: AppointmentRequestActionState, formData: FormData): Promise<AppointmentRequestActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para crear solicitudes.' }
+  const doctorId = user.doctor_id
+  try {
+    const phoneE164 = normalizePhoneToE164(String(formData.get('phone_e164') ?? ''))
+    const result = await createManualAppointmentRequest({ doctorId, patientName: String(formData.get('patient_name') ?? ''), contactName: String(formData.get('contact_name') ?? ''), relationship: String(formData.get('relationship') ?? '') as 'SELF' | 'MOTHER' | 'FATHER' | 'CHILD' | 'PARTNER' | 'RELATIVE' | 'OTHER', phoneE164, appointmentTypeId: String(formData.get('appointment_type_id') ?? '').trim() || undefined, intakeAnswers: requestIntakeAnswers(formData) })
+    revalidatePath('/app/requests')
+    return { success: 'Solicitud creada.', requestId: result.requestId }
+  } catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la solicitud.' } }
+}
+
+export async function createExistingContactAppointmentRequestAction(_previousState: AppointmentRequestActionState, formData: FormData): Promise<AppointmentRequestActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para crear solicitudes.' }
+  try {
+    const result = await createAppointmentRequestForExistingContact({ patientId: String(formData.get('patient_id') ?? ''), contactId: String(formData.get('contact_id') ?? ''), phoneId: String(formData.get('phone_id') ?? ''), intakeAnswers: requestIntakeAnswers(formData) })
+    revalidatePath('/app/requests')
+    return { success: 'Solicitud creada.', requestId: result.requestId }
+  } catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la solicitud.' } }
+}
+
+export async function createExistingContactNewPatientRequestAction(_previousState: AppointmentRequestActionState, formData: FormData): Promise<AppointmentRequestActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para crear solicitudes.' }
+  try {
+    const result = await createAppointmentRequestForNewPatient({ patientName: String(formData.get('patient_name') ?? ''), contactId: String(formData.get('contact_id') ?? ''), phoneId: String(formData.get('phone_id') ?? ''), relationship: String(formData.get('relationship') ?? '') as 'SELF' | 'MOTHER' | 'FATHER' | 'CHILD' | 'PARTNER' | 'RELATIVE' | 'OTHER', intakeAnswers: requestIntakeAnswers(formData) })
+    revalidatePath('/app/requests')
+    return { success: 'Solicitud creada.', requestId: result.requestId }
+  } catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la solicitud.' } }
 }
