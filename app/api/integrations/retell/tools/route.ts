@@ -70,6 +70,7 @@ export async function POST(request: Request) {
 
   try {
     if (typeof body.name !== 'string' || !body.name.trim()) throw new RetellToolError('INVALID_REQUEST', 'El nombre de la función es obligatorio.')
+    const functionName = body.name.trim()
     const call = callRecord(body)
     const args = argsRecord(body)
     const agentId = call.agent_id
@@ -84,13 +85,14 @@ export async function POST(request: Request) {
       : undefined
     const operationInput = { ...args, agent_id: agentId.trim(), call_id: callId.trim(), phone_number: technicalPhoneNumber }
 
-    if (body.name === 'get_context') return Response.json(await getRetellContext(operationInput))
-    if (body.name === 'prepare_booking') return Response.json(await prepareRetellBooking(operationInput))
-    if (body.name === 'get_availability') return Response.json(await getRetellAvailability(operationInput))
-    if (body.name === 'book_appointment') {
+    if (functionName === 'get_context') return Response.json(await getRetellContext(operationInput))
+    if (functionName === 'prepare_booking') return Response.json(await prepareRetellBooking(operationInput))
+    if (functionName === 'get_availability') return Response.json(await getRetellAvailability(operationInput))
+    if (functionName === 'book_appointment') {
       const result = await bookRetellAppointment(operationInput)
       return Response.json(result, { status: result.code === 'SLOT_UNAVAILABLE' ? 409 : 200 })
     }
+    console.warn('[Retell] Unknown tool:', JSON.stringify(functionName))
     return Response.json({ ok: false, code: 'UNKNOWN_TOOL', error: 'La operación solicitada no existe.' }, { status: 400 })
   } catch (error) {
     return errorResponse(error)
