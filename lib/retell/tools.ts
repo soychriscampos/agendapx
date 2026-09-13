@@ -98,7 +98,10 @@ async function assertRequestBelongsToDoctor(doctorId: string, requestId: string)
     .eq('doctor_id', doctorId)
     .maybeSingle()
 
-  if (error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar la solicitud.', 503, true)
+  if (error) {
+    console.warn('[Retell] request lookup failed:', requestId, error.code ?? 'UNKNOWN', error.message)
+    throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar la solicitud.', 503, true)
+  }
   if (!data) throw new RetellToolError('REQUEST_NOT_FOUND', 'La solicitud no corresponde al doctor.', 404)
   return data
 }
@@ -174,7 +177,9 @@ export async function getRetellAvailability(input: unknown) {
   const body = record(input)
   rejectDoctorId(body)
   const doctor = await resolveRetellDoctor(requiredString(body, 'agent_id'), optionalString(body, 'phone_number'))
-  const request = await assertRequestBelongsToDoctor(doctor.id, requiredUuid(body, 'request_id'))
+  const requestId = requiredUuid(body, 'request_id')
+  console.warn('[Retell] get_availability request_id:', requestId)
+  const request = await assertRequestBelongsToDoctor(doctor.id, requestId)
   if (!request.appointment_type_id) throw new RetellToolError('APPOINTMENT_TYPE_REQUIRED', 'La solicitud no tiene tipo de cita.', 409)
 
   const supabase = createAdminClient()

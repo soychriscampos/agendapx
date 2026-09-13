@@ -76,16 +76,8 @@ export async function POST(request: Request) {
     const agentId = call.agent_id
     const callId = call.call_id
 
-    console.warn(
-      '[Retell Test] agent_id:',
-      typeof agentId === 'string' ? agentId : 'missing',
-    )
-
     if (typeof agentId !== 'string' || !agentId.trim()) throw new RetellToolError('INVALID_REQUEST', 'El call object no contiene agent_id.')
     if (typeof callId !== 'string' || !callId.trim()) throw new RetellToolError('INVALID_REQUEST', 'El call object no contiene call_id.')
-
-    // Compatibilidad temporal exclusivamente para el Retell Test Runner.
-    const resolvedFunctionName = functionName === 'test_tool' ? 'get_context' : functionName
 
     // Retell's phone-call contract identifies the callee with to_number.
     // It is only a secondary check for inbound phone calls; agent_id remains primary.
@@ -94,10 +86,10 @@ export async function POST(request: Request) {
       : undefined
     const operationInput = { ...args, agent_id: agentId.trim(), call_id: callId.trim(), phone_number: technicalPhoneNumber }
 
-    if (resolvedFunctionName === 'get_context') return Response.json(await getRetellContext(operationInput))
-    if (resolvedFunctionName === 'prepare_booking') return Response.json(await prepareRetellBooking(operationInput))
-    if (resolvedFunctionName === 'get_availability') return Response.json(await getRetellAvailability(operationInput))
-    if (resolvedFunctionName === 'book_appointment') {
+    if (functionName === 'get_context') return Response.json(await getRetellContext(operationInput))
+    if (functionName === 'prepare_booking') return Response.json(await prepareRetellBooking(operationInput))
+    if (functionName === 'get_availability') return Response.json(await getRetellAvailability(operationInput))
+    if (functionName === 'book_appointment') {
       const result = await bookRetellAppointment(operationInput)
       return Response.json(result, { status: result.code === 'SLOT_UNAVAILABLE' ? 409 : 200 })
     }
