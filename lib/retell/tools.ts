@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
 import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -71,6 +73,43 @@ function parseIntakeAnswers(value: unknown): IntakeAnswer[] {
 
 function rpcResult(value: unknown): JsonRecord {
   return record(value)
+}
+
+function slotTokenSecret() {
+  const secret = process.env.RETELL_SLOT_TOKEN_SECRET || process.env.RETELL_API_KEY || process.env.RETELL_TOOLS_SECRET
+  if (!secret) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No está configurada la firma de slots.', 503, true)
+  return secret
+}
+
+function encodeSlotToken(requestId: string, startAt: string) {
+  const payload = Buffer.from(JSON.stringify({ v: 1, request_id: requestId, start_at: startAt })).toString('base64url')
+  const unsigned = `v1.${payload}`
+  const signature = createHmac('sha256', slotTokenSecret()).update(unsigned).digest('base64url')
+  return `${unsigned}.${signature}`
+}
+
+function decodeSlotToken(requestId: string, token: string) {
+  const parts = token.split('.')
+  if (parts.length !== 3 || parts[0] !== 'v1') throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
+
+  const unsigned = `${parts[0]}.${parts[1]}`
+  const expected = createHmac('sha256', slotTokenSecret()).update(unsigned).digest('base64url')
+  const expectedBuffer = Buffer.from(expected)
+  const receivedBuffer = Buffer.from(parts[2])
+  if (expectedBuffer.length !== receivedBuffer.length || !timingSafeEqual(expectedBuffer, receivedBuffer)) throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
+
+  let payload: JsonRecord
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+    payload = record(parsed)
+  } catch {
+    throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
+  }
+
+  if (payload.v !== 1 || payload.request_id !== requestId || typeof payload.start_at !== 'string' || !ISO_TIMESTAMP_PATTERN.test(payload.start_at) || Number.isNaN(Date.parse(payload.start_at))) {
+    throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
+  }
+  return payload.start_at
 }
 
 export async function resolveRetellDoctor(agentId: string, technicalPhoneNumber?: string): Promise<ResolvedDoctor> {
@@ -200,7 +239,15 @@ export async function getRetellAvailability(input: unknown) {
     durationMinutes: appointmentType.duration_minutes,
   }, supabase)
 
-  return { ok: true, ...slots }
+  return {
+    ok: true,
+    timezone: slots.timezone,
+    slots: slots.slots.map((slot) => ({
+      slot_token: encodeSlotToken(request.id, slot.start),
+      start: slot.start,
+      end: slot.end,
+    })),
+  }
 }
 
 export async function bookRetellAppointment(input: unknown) {
@@ -209,8 +256,8 @@ export async function bookRetellAppointment(input: unknown) {
   const doctor = await resolveRetellDoctor(requiredString(body, 'agent_id'), optionalString(body, 'phone_number'))
   const requestId = requiredUuid(body, 'request_id')
   await assertRequestBelongsToDoctor(doctor.id, requestId)
-  const startAt = requiredString(body, 'start_at')
-  if (!ISO_TIMESTAMP_PATTERN.test(startAt) || Number.isNaN(Date.parse(startAt))) throw new RetellToolError('INVALID_REQUEST', 'start_at no es una fecha ISO válida.')
+  if (body.start_at !== undefined || body.end_at !== undefined) throw new RetellToolError('INVALID_REQUEST', 'Usa slot_token para seleccionar un horario.')
+  const startAt = decodeSlotToken(requestId, requiredString(body, 'slot_token'))
 
   const supabase = createAdminClient()
   const { data, error } = await supabase.rpc('book_appointment_from_request', {

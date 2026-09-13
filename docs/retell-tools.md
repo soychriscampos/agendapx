@@ -75,11 +75,13 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
   --data '{
     "name":"book_appointment",
     "call":{"call_id":"call_xxx","agent_id":"agent_xxx"},
-    "args":{"request_id":"00000000-0000-4000-8000-000000000002","start_at":"2026-09-15T16:00:00.000Z"}
+    "args":{"request_id":"00000000-0000-4000-8000-000000000002","slot_token":"v1.<token-returned-by-get-availability>.<signature>"}
   }'
 ```
 
-Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
+`get_availability` devuelve cada opción con `slot_token`, `start` y `end`. El agente debe reutilizar exactamente `slot_token`; no debe convertir una hora hablada ni enviar `start_at`/`end_at`. HelloPx verifica el token, recupera el inicio UTC exacto y la RPC vuelve a validar la disponibilidad. Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
+
+Los tokens se firman con `RETELL_SLOT_TOKEN_SECRET`. Si no está configurada, se usa como fallback server-side `RETELL_API_KEY` y después `RETELL_TOOLS_SECRET`; ningún secreto se envía al cliente.
 
 Para una prueba manual local sin Retell, conserva el mismo body oficial y usa:
 
