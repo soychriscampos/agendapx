@@ -75,6 +75,12 @@ export async function POST(request: Request) {
     const args = argsRecord(body)
     const agentId = call.agent_id
     const callId = call.call_id
+
+    console.warn(
+      '[Retell Test] agent_id:',
+      typeof agentId === 'string' ? agentId : 'missing',
+    )
+
     if (typeof agentId !== 'string' || !agentId.trim()) throw new RetellToolError('INVALID_REQUEST', 'El call object no contiene agent_id.')
     if (typeof callId !== 'string' || !callId.trim()) throw new RetellToolError('INVALID_REQUEST', 'El call object no contiene call_id.')
 
