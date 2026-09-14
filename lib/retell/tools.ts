@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
+import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
 import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -110,6 +111,27 @@ function decodeSlotToken(requestId: string, token: string) {
     throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
   }
   return payload.start_at
+}
+
+function localSlotPresentation(startAt: string, timezone: string) {
+  const instant = new Date(startAt)
+  const local = getDateTimeInTimezone(timezone, instant)
+  const parts = new Intl.DateTimeFormat('es-MX', {
+    timeZone: timezone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(instant)
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  const period = (values.dayPeriod ?? '').replace(/[.\s]/g, '').toLowerCase()
+  return {
+    local_date: local.date,
+    local_time: local.time,
+    label: `${values.weekday} ${values.day} de ${values.month} a las ${values.hour}:${values.minute} ${period}`,
+  }
 }
 
 export async function resolveRetellDoctor(agentId: string, technicalPhoneNumber?: string): Promise<ResolvedDoctor> {
@@ -244,8 +266,7 @@ export async function getRetellAvailability(input: unknown) {
     timezone: slots.timezone,
     slots: slots.slots.map((slot) => ({
       slot_token: encodeSlotToken(request.id, slot.start),
-      start: slot.start,
-      end: slot.end,
+      ...localSlotPresentation(slot.start, slots.timezone),
     })),
   }
 }
@@ -274,8 +295,6 @@ export async function bookRetellAppointment(input: unknown) {
     idempotent: result.idempotent === true,
     appointment_id: typeof result.appointment_id === 'string' ? result.appointment_id : null,
     request_id: typeof result.request_id === 'string' ? result.request_id : null,
-    start_at: typeof result.start_at === 'string' ? result.start_at : null,
-    end_at: typeof result.end_at === 'string' ? result.end_at : null,
     status: typeof result.status === 'string' ? result.status : null,
   }
 }
