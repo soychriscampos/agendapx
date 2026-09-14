@@ -1,5 +1,3 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
-
 import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
 import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
@@ -7,7 +5,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/
 const RELATIONSHIPS = new Set(['SELF', 'MOTHER', 'FATHER', 'CHILD', 'PARTNER', 'RELATIVE', 'OTHER'])
 
 type JsonRecord = Record<string, unknown>
@@ -74,43 +71,6 @@ function parseIntakeAnswers(value: unknown): IntakeAnswer[] {
 
 function rpcResult(value: unknown): JsonRecord {
   return record(value)
-}
-
-function slotTokenSecret() {
-  const secret = process.env.RETELL_SLOT_TOKEN_SECRET || process.env.RETELL_API_KEY || process.env.RETELL_TOOLS_SECRET
-  if (!secret) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No está configurada la firma de slots.', 503, true)
-  return secret
-}
-
-function encodeSlotToken(requestId: string, startAt: string) {
-  const payload = Buffer.from(JSON.stringify({ v: 1, request_id: requestId, start_at: startAt })).toString('base64url')
-  const unsigned = `v1.${payload}`
-  const signature = createHmac('sha256', slotTokenSecret()).update(unsigned).digest('base64url')
-  return `${unsigned}.${signature}`
-}
-
-function decodeSlotToken(requestId: string, token: string) {
-  const parts = token.split('.')
-  if (parts.length !== 3 || parts[0] !== 'v1') throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
-
-  const unsigned = `${parts[0]}.${parts[1]}`
-  const expected = createHmac('sha256', slotTokenSecret()).update(unsigned).digest('base64url')
-  const expectedBuffer = Buffer.from(expected)
-  const receivedBuffer = Buffer.from(parts[2])
-  if (expectedBuffer.length !== receivedBuffer.length || !timingSafeEqual(expectedBuffer, receivedBuffer)) throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
-
-  let payload: JsonRecord
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
-    payload = record(parsed)
-  } catch {
-    throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
-  }
-
-  if (payload.v !== 1 || payload.request_id !== requestId || typeof payload.start_at !== 'string' || !ISO_TIMESTAMP_PATTERN.test(payload.start_at) || Number.isNaN(Date.parse(payload.start_at))) {
-    throw new RetellToolError('INVALID_SLOT', 'La opción de horario no es válida.')
-  }
-  return payload.start_at
 }
 
 function localSlotPresentation(startAt: string, timezone: string) {
@@ -265,7 +225,6 @@ export async function getRetellAvailability(input: unknown) {
     ok: true,
     timezone: slots.timezone,
     slots: slots.slots.map((slot) => ({
-      slot_token: encodeSlotToken(request.id, slot.start),
       ...localSlotPresentation(slot.start, slots.timezone),
     })),
   }
@@ -276,14 +235,38 @@ export async function bookRetellAppointment(input: unknown) {
   rejectDoctorId(body)
   const doctor = await resolveRetellDoctor(requiredString(body, 'agent_id'), optionalString(body, 'phone_number'))
   const requestId = requiredUuid(body, 'request_id')
-  await assertRequestBelongsToDoctor(doctor.id, requestId)
-  if (body.start_at !== undefined || body.end_at !== undefined) throw new RetellToolError('INVALID_REQUEST', 'Usa slot_token para seleccionar un horario.')
-  const startAt = decodeSlotToken(requestId, requiredString(body, 'slot_token'))
+  const request = await assertRequestBelongsToDoctor(doctor.id, requestId)
+  if (!request.appointment_type_id) throw new RetellToolError('APPOINTMENT_TYPE_REQUIRED', 'La solicitud no tiene tipo de cita.', 409)
+  const localDate = requiredDate(body, 'local_date')
+  const localTime = requiredString(body, 'local_time')
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(localTime)) throw new RetellToolError('INVALID_REQUEST', 'El campo local_time no es válido.')
 
   const supabase = createAdminClient()
+  const { data: appointmentType, error: appointmentTypeError } = await supabase
+    .from('appointment_types')
+    .select('duration_minutes')
+    .eq('id', request.appointment_type_id)
+    .eq('doctor_id', doctor.id)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (appointmentTypeError) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar el tipo de cita.', 503, true)
+  if (!appointmentType) throw new RetellToolError('APPOINTMENT_TYPE_NOT_AVAILABLE', 'El tipo de cita ya no está disponible.', 409)
+
+  const availability = await getAvailableSlots({
+    doctorId: doctor.id,
+    dateFrom: localDate,
+    dateTo: localDate,
+    durationMinutes: appointmentType.duration_minutes,
+  }, supabase)
+  const selectedSlot = availability.slots.find((slot) => {
+    const local = getDateTimeInTimezone(doctor.timezone, new Date(slot.start))
+    return local.date === localDate && local.time === localTime
+  })
+  if (!selectedSlot) throw new RetellToolError('SLOT_UNAVAILABLE', 'El horario seleccionado ya no está disponible.', 409, true)
+
   const { data, error } = await supabase.rpc('book_appointment_from_request', {
     p_request_id: requestId,
-    p_start_at: startAt,
+    p_start_at: selectedSlot.start,
   })
   if (error) throw new RetellToolError('BOOKING_FAILED', 'No se pudo crear la cita.', 500)
 

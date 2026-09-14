@@ -75,13 +75,11 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
   --data '{
     "name":"book_appointment",
     "call":{"call_id":"call_xxx","agent_id":"agent_xxx"},
-    "args":{"request_id":"00000000-0000-4000-8000-000000000002","slot_token":"v1.<token-returned-by-get-availability>.<signature>"}
+    "args":{"request_id":"00000000-0000-4000-8000-000000000002","local_date":"2026-09-15","local_time":"19:00"}
   }'
 ```
 
-`get_availability` devuelve cada opción con `slot_token`, `local_date`, `local_time` y `label`, ya expresados en la zona horaria del doctor. El agente sólo debe leer esas opciones y reutilizar exactamente `slot_token`; nunca debe convertir UTC, calcular disponibilidad ni enviar `start_at`/`end_at`. HelloPx conserva el inicio UTC dentro del token, lo verifica y la RPC vuelve a validar la disponibilidad. Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
-
-Los tokens se firman con `RETELL_SLOT_TOKEN_SECRET`. Si no está configurada, se usa como fallback server-side `RETELL_API_KEY` y después `RETELL_TOOLS_SECRET`; ningún secreto se envía al cliente.
+`get_availability` devuelve cada opción con `local_date`, `local_time` y `label`, ya expresados en la zona horaria del doctor. El agente sólo debe leer esas opciones y repetir exactamente `local_date` y `local_time`; nunca debe convertir UTC, calcular disponibilidad, enviar duración ni enviar `start_at`/`end_at`. HelloPx vuelve a consultar disponibilidad para esa fecha, encuentra el instante UTC correspondiente y la RPC vuelve a validar la disponibilidad. Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
 
 Para una prueba manual local sin Retell, conserva el mismo body oficial y usa:
 
