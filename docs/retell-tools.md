@@ -12,6 +12,33 @@ La producción verifica `X-Retell-Signature` sobre el body raw exacto usando `RE
 
 Retell debe configurarse con `Payload: args only = OFF`. El nombre de la función está en `name`, el contexto en `call` y los parámetros conversacionales en `args`. En llamadas telefónicas inbound, `call.to_number` se valida secundariamente contra el número técnico del doctor cuando está disponible; `call.agent_id` es la identidad primaria.
 
+## Inbound call webhook
+
+Antes de conectar una llamada inbound, Retell puede solicitar contexto al endpoint configurado en el número técnico. HelloPx verifica `X-Retell-Signature`, resuelve el doctor por `call_inbound.agent_id` y valida `call_inbound.to_number` de forma secundaria cuando está presente. La respuesta sólo contiene variables string-only para el saludo y contexto administrativo inicial:
+
+```json
+{
+  "call_inbound": {
+    "dynamic_variables": {
+      "assistant_name": "Ana",
+      "doctor_name": "Dra. López",
+      "specialty": "Dermatología",
+      "timezone": "America/Mazatlan",
+      "office_hours_summary": "Horario local del consultorio (America/Mazatlan): lunes 09:00–17:00",
+      "administrative_summary": "Dirección: ... Teléfono: ..."
+    }
+  }
+}
+```
+
+No se precargan pacientes, intake, tipos de cita, disponibilidad, booking, notas internas ni reglas técnicas. La URL que debe configurarse por número en Retell es:
+
+```text
+https://<APP_URL>/api/integrations/retell/inbound
+```
+
+El prompt puede utilizar `{{assistant_name}}`, `{{doctor_name}}`, `{{specialty}}`, `{{timezone}}`, `{{office_hours_summary}}` y `{{administrative_summary}}`. Las Custom Functions de Fase 7 permanecen disponibles bajo demanda.
+
 ## Contexto
 
 ```bash

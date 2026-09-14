@@ -8,7 +8,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const RELATIONSHIPS = new Set(['SELF', 'MOTHER', 'FATHER', 'CHILD', 'PARTNER', 'RELATIVE', 'OTHER'])
 
 type JsonRecord = Record<string, unknown>
-type ResolvedDoctor = { id: string; displayName: string; specialty: string | null; timezone: string }
+type ResolvedDoctor = { id: string; displayName: string; specialty: string | null; timezone: string; address: string | null; phone: string | null; whatsapp: string | null }
 type IntakeAnswer = { intake_field_id: string; value: string | null }
 
 export class RetellToolError extends Error {
@@ -98,7 +98,7 @@ export async function resolveRetellDoctor(agentId: string, technicalPhoneNumber?
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('doctors')
-    .select('id, display_name, specialty, timezone, twilio_phone_number')
+    .select('id, display_name, specialty, timezone, address, phone, whatsapp, twilio_phone_number')
     .eq('retell_agent_id', agentId)
     .eq('status', 'ACTIVE')
     .maybeSingle()
@@ -107,7 +107,51 @@ export async function resolveRetellDoctor(agentId: string, technicalPhoneNumber?
   if (!data) throw new RetellToolError('DOCTOR_NOT_AVAILABLE', 'El agente no tiene un doctor activo configurado.', 404)
   if (technicalPhoneNumber && data.twilio_phone_number !== technicalPhoneNumber) throw new RetellToolError('TECHNICAL_PHONE_MISMATCH', 'El número técnico no corresponde al agente.', 403)
 
-  return { id: data.id, displayName: data.display_name, specialty: data.specialty, timezone: data.timezone }
+  return { id: data.id, displayName: data.display_name, specialty: data.specialty, timezone: data.timezone, address: data.address, phone: data.phone, whatsapp: data.whatsapp }
+}
+
+const WEEKDAY_LABELS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+
+function summarizeOfficeHours(rows: Array<{ weekday: number; start_local: string; end_local: string }>, timezone: string) {
+  const grouped = new Map<number, string[]>()
+  for (const row of rows) {
+    const ranges = grouped.get(row.weekday) ?? []
+    ranges.push(`${row.start_local.slice(0, 5)}–${row.end_local.slice(0, 5)}`)
+    grouped.set(row.weekday, ranges)
+  }
+  const summary = Array.from(grouped.entries())
+    .sort(([first], [second]) => first - second)
+    .map(([weekday, ranges]) => `${WEEKDAY_LABELS[weekday - 1] ?? 'día'} ${ranges.join(', ')}`)
+    .join('; ')
+  return `Horario local del consultorio (${timezone}): ${summary || 'no configurado.'}`
+}
+
+function summarizeAdministrativeInfo(doctor: ResolvedDoctor) {
+  const values = [
+    doctor.address ? `Dirección: ${doctor.address}` : null,
+    doctor.phone ? `Teléfono: ${doctor.phone}` : null,
+    doctor.whatsapp ? `WhatsApp: ${doctor.whatsapp}` : null,
+  ].filter((value): value is string => value !== null)
+  return values.length ? values.join('. ') : 'Información administrativa no configurada.'
+}
+
+export async function getRetellInboundContext(agentId: string, technicalPhoneNumber?: string) {
+  const doctor = await resolveRetellDoctor(agentId, technicalPhoneNumber)
+  const supabase = createAdminClient()
+  const [settings, schedule] = await Promise.all([
+    supabase.from('assistant_settings').select('assistant_name').eq('doctor_id', doctor.id).maybeSingle(),
+    supabase.from('doctor_schedule_windows').select('weekday, start_local, end_local').eq('doctor_id', doctor.id).order('weekday').order('start_local'),
+  ])
+  if (settings.error || schedule.error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar el contexto inicial.', 503, true)
+
+  return {
+    assistant_name: settings.data?.assistant_name ?? 'Asistente del consultorio',
+    doctor_name: doctor.displayName,
+    specialty: doctor.specialty ?? 'especialidad no configurada',
+    timezone: doctor.timezone,
+    office_hours_summary: summarizeOfficeHours(schedule.data ?? [], doctor.timezone),
+    administrative_summary: summarizeAdministrativeInfo(doctor),
+  }
 }
 
 async function assertRequestBelongsToDoctor(doctorId: string, requestId: string) {
