@@ -1,6 +1,7 @@
 import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
 import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
+import { formatTimeForVoice } from '@/lib/retell/voice-time'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -81,16 +82,12 @@ function localSlotPresentation(startAt: string, timezone: string) {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
   }).formatToParts(instant)
   const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
-  const period = (values.dayPeriod ?? '').replace(/[.\s]/g, '').toLowerCase()
   return {
     local_date: local.date,
     local_time: local.time,
-    label: `${values.weekday} ${values.day} de ${values.month} a las ${values.hour}:${values.minute} ${period}`,
+    label: `${values.weekday} ${values.day} de ${values.month} a las ${formatTimeForVoice(local.time)}`,
   }
 }
 
