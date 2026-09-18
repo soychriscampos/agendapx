@@ -11,6 +11,23 @@ const RELATIONSHIPS = new Set(['SELF', 'MOTHER', 'FATHER', 'CHILD', 'PARTNER', '
 type JsonRecord = Record<string, unknown>
 type ResolvedDoctor = { id: string; displayName: string; specialty: string | null; timezone: string; address: string | null; phone: string | null; whatsapp: string | null }
 type IntakeAnswer = { intake_field_id: string; value: string | null }
+type DepositPaymentInstructions = {
+  bank_name: string | null
+  account_holder: string | null
+  clabe: string | null
+  account_number: string | null
+  instructions: string | null
+  message_template: string | null
+}
+type DepositResolution = {
+  rule_id: string | null
+  rule_name: string
+  type: 'PERCENTAGE' | 'FIXED'
+  value: number
+  appointment_price: number | null
+  amount: number
+  payment_instructions: DepositPaymentInstructions | null
+}
 
 export class RetellToolError extends Error {
   constructor(public readonly code: string, message: string, public readonly status = 400, public readonly retryable = false) {
@@ -72,6 +89,79 @@ function parseIntakeAnswers(value: unknown): IntakeAnswer[] {
 
 function rpcResult(value: unknown): JsonRecord {
   return record(value)
+}
+
+const DEPOSIT_RESOLUTION_CODES = new Set([
+  'REQUEST_NOT_FOUND',
+  'REQUEST_NOT_WAITING_DEPOSIT',
+  'APPOINTMENT_TYPE_REQUIRED',
+  'APPOINTMENT_TYPE_NOT_FOUND',
+  'DEPOSIT_RULE_NOT_FOUND',
+  'AMBIGUOUS_DEPOSIT_RULE',
+  'DEPOSIT_PRICE_REQUIRED',
+  'INVALID_DEPOSIT_TYPE',
+])
+
+function depositResolutionCode(error: unknown) {
+  if (!error || typeof error !== 'object') return null
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown }
+  const values = [candidate.code, candidate.message, candidate.details, candidate.hint]
+    .filter((value): value is string => typeof value === 'string')
+  return values.flatMap((value) => value.split(/[^A-Z_]+/)).find((value) => DEPOSIT_RESOLUTION_CODES.has(value)) ?? null
+}
+
+function depositResolutionMessage(code: string) {
+  const messages: Record<string, string> = {
+    REQUEST_NOT_FOUND: 'La solicitud no existe.',
+    REQUEST_NOT_WAITING_DEPOSIT: 'La solicitud ya no está esperando anticipo.',
+    APPOINTMENT_TYPE_REQUIRED: 'La solicitud no tiene tipo de cita.',
+    APPOINTMENT_TYPE_NOT_FOUND: 'El tipo de cita no está disponible.',
+    DEPOSIT_RULE_NOT_FOUND: 'No se pudo resolver la regla de anticipo configurada.',
+    AMBIGUOUS_DEPOSIT_RULE: 'La configuración de anticipos es ambigua.',
+    DEPOSIT_PRICE_REQUIRED: 'El tipo de cita no tiene un precio válido para calcular el anticipo.',
+    INVALID_DEPOSIT_TYPE: 'La configuración del anticipo tiene un tipo inválido.',
+  }
+  return messages[code] ?? 'No se pudo resolver el anticipo.'
+}
+
+function nullableString(value: unknown, field: string) {
+  if (value !== null && typeof value !== 'string') throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', `La respuesta de anticipo contiene ${field} inválido.`, 502)
+  return value as string | null
+}
+
+function depositResolution(value: unknown): DepositResolution {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo no es válida.', 502)
+  const result = value as JsonRecord
+  if (!result.deposit || typeof result.deposit !== 'object' || Array.isArray(result.deposit)) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo está incompleta.', 502)
+  const deposit = result.deposit as JsonRecord
+  const type = deposit.type
+  if (typeof deposit.rule_name !== 'string' || (type !== 'PERCENTAGE' && type !== 'FIXED')) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo está incompleta.', 502)
+  if (deposit.rule_id !== null && typeof deposit.rule_id !== 'string') throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo contiene rule_id inválido.', 502)
+  if (typeof deposit.value !== 'number' || !Number.isFinite(deposit.value) || typeof deposit.amount !== 'number' || !Number.isFinite(deposit.amount)) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo contiene importes inválidos.', 502)
+  if (deposit.appointment_price !== null && (typeof deposit.appointment_price !== 'number' || !Number.isFinite(deposit.appointment_price))) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo contiene un precio inválido.', 502)
+
+  let paymentInstructions: DepositPaymentInstructions | null = null
+  if (deposit.payment_instructions !== null) {
+    const payment = record(deposit.payment_instructions)
+    paymentInstructions = {
+      bank_name: nullableString(payment.bank_name, 'bank_name'),
+      account_holder: nullableString(payment.account_holder, 'account_holder'),
+      clabe: nullableString(payment.clabe, 'clabe'),
+      account_number: nullableString(payment.account_number, 'account_number'),
+      instructions: nullableString(payment.instructions, 'instructions'),
+      message_template: nullableString(payment.message_template, 'message_template'),
+    }
+  }
+
+  return {
+    rule_id: deposit.rule_id as string | null,
+    rule_name: deposit.rule_name,
+    type,
+    value: deposit.value,
+    appointment_price: deposit.appointment_price as number | null,
+    amount: deposit.amount,
+    payment_instructions: paymentInstructions,
+  }
 }
 
 function localSlotPresentation(startAt: string, timezone: string) {
@@ -223,15 +313,43 @@ export async function prepareRetellBooking(input: unknown) {
 
   const result = rpcResult(data)
   const requiresDeposit = result.requires_deposit === true
+  const requestId = typeof result.request_id === 'string' ? result.request_id : null
+  let deposit: DepositResolution | undefined
+
+  if (requiresDeposit) {
+    if (!requestId) throw new RetellToolError('PREPARE_BOOKING_INVALID', 'La preparación indicó un anticipo sin request_id.', 502)
+
+    const { data: resolvedDeposit, error: depositError } = await supabase.rpc('resolve_deposit_for_request', {
+      p_request_id: requestId,
+    })
+
+    if (depositError) {
+      const code = depositResolutionCode(depositError)
+      if (code) throw new RetellToolError(code, depositResolutionMessage(code), code === 'REQUEST_NOT_FOUND' ? 404 : 409)
+      throw new RetellToolError('DEPOSIT_RESOLUTION_FAILED', 'No se pudo resolver el anticipo.', 502, true)
+    }
+
+    if (!resolvedDeposit || typeof resolvedDeposit !== 'object' || Array.isArray(resolvedDeposit)) throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo no es válida.', 502)
+    const resolved = resolvedDeposit as JsonRecord
+    if (typeof resolved.code === 'string' && DEPOSIT_RESOLUTION_CODES.has(resolved.code)) {
+      throw new RetellToolError(resolved.code, depositResolutionMessage(resolved.code), resolved.code === 'REQUEST_NOT_FOUND' ? 404 : 409)
+    }
+    if (resolved.ok !== true || resolved.requires_deposit !== true || resolved.request_id !== requestId || resolved.request_status !== 'WAITING_DEPOSIT') {
+      throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo no confirma una solicitud pendiente válida.', 502)
+    }
+    deposit = depositResolution(resolved)
+  }
+
   return {
     ok: result.ok === true && !requiresDeposit,
     requires_deposit: requiresDeposit,
-    request_id: typeof result.request_id === 'string' ? result.request_id : null,
+    request_id: requestId,
     patient_id: typeof result.patient_id === 'string' ? result.patient_id : null,
     appointment_type_id: typeof result.appointment_type_id === 'string' ? result.appointment_type_id : null,
     request_status: typeof result.request_status === 'string' ? result.request_status : null,
     idempotent: result.idempotent === true,
     code: typeof result.code === 'string' ? result.code : null,
+    ...(deposit ? { deposit } : {}),
   }
 }
 
