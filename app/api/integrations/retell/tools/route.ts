@@ -91,7 +91,8 @@ export async function POST(request: Request) {
     if (functionName === 'get_availability') return Response.json(await getRetellAvailability(operationInput))
     if (functionName === 'book_appointment') {
       const result = await bookRetellAppointment(operationInput)
-      return Response.json(result, { status: result.code === 'SLOT_UNAVAILABLE' ? 409 : 200 })
+      const normalBookingCodes = new Set(['TOO_SOON', 'OUTSIDE_SCHEDULE', 'SLOT_UNAVAILABLE'])
+      return Response.json(result, { status: normalBookingCodes.has(result.code ?? '') ? 200 : result.ok ? 200 : 409 })
     }
     console.warn('[Retell] Unknown tool:', JSON.stringify(functionName))
     return Response.json({ ok: false, code: 'UNKNOWN_TOOL', error: 'La operación solicitada no existe.' }, { status: 400 })

@@ -14,6 +14,8 @@ export type AvailableSlotsInput = {
 export type AvailableSlot = { start: string; end: string }
 export type AvailableSlotsResult = { timezone: string; slots: AvailableSlot[] }
 
+export const MIN_BOOKING_LEAD_MINUTES = 30
+
 type LocalRange = { start: string; end: string }
 type OccupiedRange = { start: Date; end: Date }
 
@@ -62,6 +64,7 @@ export function calculateAvailableSlots({ dateFrom, dateTo, timezone, durationMi
   now?: Date
 }): AvailableSlot[] {
   const slots: AvailableSlot[] = []
+  const earliestStart = new Date(now.getTime() + MIN_BOOKING_LEAD_MINUTES * 60 * 1000)
   for (const date of datesBetween(dateFrom, dateTo)) {
     const day = weekday(date)
     for (const window of schedule.get(day) ?? []) {
@@ -71,7 +74,7 @@ export function calculateAvailableSlots({ dateFrom, dateTo, timezone, durationMi
         const start = localDateTimeToUtc(date, `${String(Math.floor(startMinute / 60)).padStart(2, '0')}:${String(startMinute % 60).padStart(2, '0')}`, timezone)
         const endMinute = startMinute + durationMinutes
         const end = localDateTimeToUtc(date, `${String(Math.floor(endMinute / 60)).padStart(2, '0')}:${String(endMinute % 60).padStart(2, '0')}`, timezone)
-        if (start <= now || occupied.some((range) => overlaps(start, end, range.start, range.end))) continue
+        if (start < earliestStart || occupied.some((range) => overlaps(start, end, range.start, range.end))) continue
         slots.push({ start: start.toISOString(), end: end.toISOString() })
       }
     }

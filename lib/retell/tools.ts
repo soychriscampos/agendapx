@@ -1,4 +1,4 @@
-import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
+import { getDateTimeInTimezone, localDateTimeToUtc } from '@/lib/agenda/timezone'
 import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { formatTimeForVoice } from '@/lib/retell/voice-time'
@@ -282,40 +282,23 @@ export async function bookRetellAppointment(input: unknown) {
   const localTime = requiredString(body, 'local_time')
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(localTime)) throw new RetellToolError('INVALID_REQUEST', 'El campo local_time no es válido.')
 
+  const startAt = localDateTimeToUtc(localDate, localTime, doctor.timezone)
   const supabase = createAdminClient()
-  const { data: appointmentType, error: appointmentTypeError } = await supabase
-    .from('appointment_types')
-    .select('duration_minutes')
-    .eq('id', request.appointment_type_id)
-    .eq('doctor_id', doctor.id)
-    .eq('is_active', true)
-    .maybeSingle()
-  if (appointmentTypeError) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar el tipo de cita.', 503, true)
-  if (!appointmentType) throw new RetellToolError('APPOINTMENT_TYPE_NOT_AVAILABLE', 'El tipo de cita ya no está disponible.', 409)
-
-  const availability = await getAvailableSlots({
-    doctorId: doctor.id,
-    dateFrom: localDate,
-    dateTo: localDate,
-    durationMinutes: appointmentType.duration_minutes,
-  }, supabase)
-  const selectedSlot = availability.slots.find((slot) => {
-    const local = getDateTimeInTimezone(doctor.timezone, new Date(slot.start))
-    return local.date === localDate && local.time === localTime
-  })
-  if (!selectedSlot) throw new RetellToolError('SLOT_UNAVAILABLE', 'El horario seleccionado ya no está disponible.', 409, true)
 
   const { data, error } = await supabase.rpc('book_appointment_from_request', {
     p_request_id: requestId,
-    p_start_at: selectedSlot.start,
+    p_start_at: startAt.toISOString(),
   })
   if (error) throw new RetellToolError('BOOKING_FAILED', 'No se pudo crear la cita.', 500)
 
   const result = rpcResult(data)
+  const code = typeof result.code === 'string' ? result.code : null
+  const expectedBookingCodes = new Set(['TOO_SOON', 'OUTSIDE_SCHEDULE', 'SLOT_UNAVAILABLE'])
+  const expectedBookingFailure = code !== null && expectedBookingCodes.has(code)
   return {
-    ok: result.ok === true,
-    code: typeof result.code === 'string' ? result.code : null,
-    retryable: result.retryable === true,
+    ok: expectedBookingFailure ? false : result.ok === true,
+    code,
+    retryable: expectedBookingFailure || result.retryable === true,
     idempotent: result.idempotent === true,
     appointment_id: typeof result.appointment_id === 'string' ? result.appointment_id : null,
     request_id: typeof result.request_id === 'string' ? result.request_id : null,
