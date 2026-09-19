@@ -165,9 +165,8 @@ export async function saveDepositRule(formData: FormData): Promise<AssistantActi
     const doctorId = await targetDoctorId(text(formData, 'doctor_id'))
     const id = optionalText(formData, 'id')
     const scope = text(formData, 'scope')
-    const type = text(formData, 'deposit_type')
     const rawValue = text(formData, 'deposit_value')
-    const value = rawValue ? Number(rawValue) : null
+    const submittedValue = rawValue ? Number(rawValue) : null
     const name = text(formData, 'name')
     const appointmentTypeId = optionalText(formData, 'appointment_type_id')
     const intakeFieldId = optionalText(formData, 'intake_field_id')
@@ -175,8 +174,12 @@ export async function saveDepositRule(formData: FormData): Promise<AssistantActi
     const conditionValue = optionalText(formData, 'condition_value')
     const supabase = await createClient()
     let sortOrder: number
+    let existingRule: { deposit_type: string; deposit_value: number } | null = null
 
     if (id) {
+      const { data, error } = await supabase.from('deposit_rules').select('deposit_type, deposit_value').eq('id', id).eq('doctor_id', doctorId).maybeSingle()
+      if (error || !data) throw new Error('No se encontró la regla de anticipo.')
+      existingRule = data
       sortOrder = Number(formData.get('sort_order'))
     } else {
       const { data, error } = await supabase.from('deposit_rules').select('sort_order').eq('doctor_id', doctorId).order('sort_order', { ascending: false }).limit(1).maybeSingle()
@@ -184,11 +187,16 @@ export async function saveDepositRule(formData: FormData): Promise<AssistantActi
       sortOrder = (data?.sort_order ?? 0) + 10
     }
 
-    const rule = { name, scope, appointment_type_id: appointmentTypeId, intake_field_id: intakeFieldId, operator, condition_value: conditionValue, deposit_type: type, deposit_value: value, sort_order: sortOrder }
+    const isActive = booleanValue(formData, 'is_active')
+    const isValidSubmittedValue = submittedValue !== null && Number.isFinite(submittedValue) && submittedValue > 0
+    const preserveLegacyPercentage = existingRule?.deposit_type === 'PERCENTAGE' && rawValue === '' && !isActive
+    if (existingRule?.deposit_type === 'PERCENTAGE' && rawValue === '' && isActive) throw new Error('Ingresa una cantidad de anticipo para actualizar esta regla porcentual.')
+    const rule = { name, scope, appointment_type_id: appointmentTypeId, intake_field_id: intakeFieldId, operator, condition_value: conditionValue, deposit_value: preserveLegacyPercentage ? existingRule?.deposit_value ?? null : submittedValue, sort_order: sortOrder }
     const validationError = validateDepositRule(rule)
     if (validationError) throw new Error(validationError)
     await validateDepositRuleReferences(supabase, doctorId, [rule])
-    const values = { doctor_id: doctorId, ...rule, is_active: booleanValue(formData, 'is_active') }
+    if (!isValidSubmittedValue && !preserveLegacyPercentage) throw new Error('Ingresa una cantidad de anticipo mayor que cero.')
+    const values = { doctor_id: doctorId, ...rule, deposit_type: preserveLegacyPercentage ? 'PERCENTAGE' : 'FIXED', is_active: isActive }
     const query = id ? supabase.from('deposit_rules').update(values).eq('id', id).eq('doctor_id', doctorId) : supabase.from('deposit_rules').insert(values)
     const { error } = await query; if (error) throw new Error('No se pudo guardar la regla de anticipo.')
   })
@@ -221,9 +229,10 @@ export async function saveDepositRulesForOnboarding(formData: FormData): Promise
     if (!Array.isArray(rawItems) || !Array.isArray(rawDeletedIds) || rawDeletedIds.some((id) => typeof id !== 'string')) throw new Error('Las reglas de anticipo no son válidas.')
 
     const supabase = await createClient()
-    const { data: existingRows, error: queryError } = await supabase.from('deposit_rules').select('id').eq('doctor_id', doctorId)
+    const { data: existingRows, error: queryError } = await supabase.from('deposit_rules').select('id, deposit_type, deposit_value').eq('doctor_id', doctorId)
     if (queryError) throw new Error('No se pudieron cargar las reglas actuales.')
-    const existingIds = new Set((existingRows ?? []).map((row) => row.id))
+    const existingById = new Map((existingRows ?? []).map((row) => [row.id, row]))
+    const existingIds = new Set(existingById.keys())
     const deletedIds = rawDeletedIds as string[]
     if (new Set(deletedIds).size !== deletedIds.length) throw new Error('Las reglas seleccionadas para eliminar no son válidas.')
 
@@ -237,19 +246,22 @@ export async function saveDepositRulesForOnboarding(formData: FormData): Promise
       const intakeFieldId = typeof item.intake_field_id === 'string' && item.intake_field_id ? item.intake_field_id : null
       const operator = typeof item.operator === 'string' && item.operator ? item.operator : null
       const conditionValue = typeof item.condition_value === 'string' && item.condition_value.trim() ? item.condition_value.trim() : null
-      const depositType = typeof item.deposit_type === 'string' ? item.deposit_type : ''
       const rawValue = item.deposit_value
       const depositValue = rawValue === '' || rawValue == null ? null : Number(rawValue)
       const isActive = item.is_active === true && wantsDeposit
-      const rule = { name, scope, appointment_type_id: appointmentTypeId, intake_field_id: intakeFieldId, operator, condition_value: conditionValue, deposit_type: depositType, deposit_value: depositValue, sort_order: depositRuleSortOrder(index) }
-      const validationError = validateDepositRule(rule)
-
       if (!id && !wantsDeposit) return null
       if (!id) throw new Error('Una regla nueva no tiene un identificador válido.')
+      const existingRule = existingById.get(id)
+      const hasValidSubmittedValue = depositValue !== null && Number.isFinite(depositValue) && depositValue > 0
+      const preserveLegacyPercentage = existingRule?.deposit_type === 'PERCENTAGE' && (rawValue === '' || rawValue == null) && !isActive
+      if (existingRule?.deposit_type === 'PERCENTAGE' && (rawValue === '' || rawValue == null) && isActive) throw new Error('Ingresa una cantidad de anticipo para actualizar esta regla porcentual.')
+      const rule = { name, scope, appointment_type_id: appointmentTypeId, intake_field_id: intakeFieldId, operator, condition_value: conditionValue, deposit_value: preserveLegacyPercentage ? Number(existingRule.deposit_value) : depositValue, sort_order: depositRuleSortOrder(index) }
+      const validationError = validateDepositRule(rule)
       if (!existingIds.has(id) && validationError && !wantsDeposit) return null
       if (validationError) throw new Error(validationError)
+      if (!hasValidSubmittedValue && !preserveLegacyPercentage) throw new Error('Ingresa una cantidad de anticipo mayor que cero.')
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new Error('Una regla tiene un identificador no válido.')
-      return { id, ...rule, is_active: isActive }
+      return { id, ...rule, deposit_type: preserveLegacyPercentage ? 'PERCENTAGE' as const : 'FIXED' as const, is_active: isActive }
     }).filter((item): item is NonNullable<typeof item> => item !== null)
 
     const ids = normalized.map((item) => item.id).filter(Boolean)

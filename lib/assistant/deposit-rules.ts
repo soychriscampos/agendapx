@@ -1,8 +1,9 @@
 export const DEPOSIT_RULE_SCOPES = ['ALL', 'APPOINTMENT_TYPE', 'INTAKE_FIELD'] as const
-export const DEPOSIT_TYPES = ['PERCENTAGE', 'FIXED'] as const
+export const DEPOSIT_TYPES = ['FIXED'] as const
 
 export type DepositRuleScope = (typeof DEPOSIT_RULE_SCOPES)[number]
 export type DepositType = (typeof DEPOSIT_TYPES)[number]
+export type StoredDepositType = DepositType | 'PERCENTAGE'
 
 export type DepositRule = {
   id: string
@@ -12,7 +13,7 @@ export type DepositRule = {
   intake_field_id: string | null
   operator: 'EQUALS' | null
   condition_value: string | null
-  deposit_type: DepositType
+  deposit_type: StoredDepositType
   deposit_value: number
   is_active: boolean
   sort_order: number
@@ -21,6 +22,7 @@ export type DepositRule = {
 
 export type DepositRuleDraft = Omit<DepositRule, 'deposit_value'> & {
   deposit_value: number | null
+  legacyPercentage?: boolean
 }
 
 export function depositRuleSortOrder(index: number) {
@@ -42,15 +44,12 @@ export function validateDepositRule(rule: {
   intake_field_id: string | null
   operator: string | null
   condition_value: string | null
-  deposit_type: string
   deposit_value: number | null
   sort_order: number
 }) {
   const validScope = DEPOSIT_RULE_SCOPES.includes(rule.scope as DepositRuleScope)
-  const validType = DEPOSIT_TYPES.includes(rule.deposit_type as DepositType)
   const value = rule.deposit_value
-  const validValue = value !== null && Number.isFinite(value) && value > 0 &&
-    (rule.deposit_type !== 'PERCENTAGE' || value <= 100)
+  const validValue = value !== null && Number.isFinite(value) && value > 0
   const validCondition = rule.scope === 'ALL'
     ? !rule.appointment_type_id && !rule.intake_field_id && !rule.operator && !rule.condition_value
     : rule.scope === 'APPOINTMENT_TYPE'
@@ -59,7 +58,7 @@ export function validateDepositRule(rule: {
         ? !!rule.intake_field_id && rule.operator === 'EQUALS' && !!rule.condition_value?.trim() && !rule.appointment_type_id
         : false
 
-  if (!rule.name.trim() || !validScope || !validType || !validValue || !validCondition || !Number.isInteger(rule.sort_order) || rule.sort_order <= 0) {
+  if (!rule.name.trim() || !validScope || !validValue || !validCondition || !Number.isInteger(rule.sort_order) || rule.sort_order <= 0) {
     return 'Completa la regla de anticipo antes de continuar.'
   }
 
