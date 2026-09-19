@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
     supabase.from('doctor_payment_instructions').select('bank_name, account_holder, clabe, account_number, instructions, message_template').eq('doctor_id', context.doctorId).maybeSingle(),
     supabase.from('appointment_types').select('id, name, duration_minutes, price, is_active').eq('doctor_id', context.doctorId).order('created_at'),
     supabase.from('assistant_intake_fields').select('id, field_key, label, is_required, is_active, sort_order').eq('doctor_id', context.doctorId).order('sort_order').order('id'),
-    supabase.from('deposit_rules').select('id, name, scope, appointment_type_id, intake_field_id, operator, condition_value, deposit_type, deposit_value, is_active').eq('doctor_id', context.doctorId).order('created_at'),
+    supabase.from('deposit_rules').select('id, name, scope, appointment_type_id, intake_field_id, operator, condition_value, deposit_type, deposit_value, is_active, sort_order, created_at').eq('doctor_id', context.doctorId).order('sort_order').order('created_at').order('id'),
     supabase.from('assistant_knowledge_items').select('id, title, content, is_active, sort_order').eq('doctor_id', context.doctorId).order('sort_order').order('id'),
     getDoctorSchedule(context.doctorId, context.actorRole),
   ])
