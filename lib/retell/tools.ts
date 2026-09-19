@@ -3,6 +3,7 @@ import { getAvailableSlots } from '@/lib/availability/get-available-slots'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { formatTimeForVoice } from '@/lib/retell/voice-time'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { deliverDepositRequestEmail } from '@/lib/deposits/phase9'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -338,6 +339,7 @@ export async function prepareRetellBooking(input: unknown) {
       throw new RetellToolError('DEPOSIT_RESOLUTION_INVALID', 'La respuesta de anticipo no confirma una solicitud pendiente válida.', 502)
     }
     deposit = depositResolution(resolved)
+    if (deposit.type === 'FIXED') await deliverDepositRequestEmail(requestId)
   }
 
   return {
