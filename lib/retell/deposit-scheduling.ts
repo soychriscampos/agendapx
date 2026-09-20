@@ -1,6 +1,7 @@
 import { APIError } from 'retell-sdk'
 
 import { getRetellClient } from '@/lib/retell/client'
+import { getRetellDynamicVariables } from '@/lib/retell/tools'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 type JsonRecord = Record<string, unknown>
@@ -121,7 +122,25 @@ export async function startDepositSchedulingCall(requestId: string) {
     return { ok: false as const, code: 'SCHEDULING_CLAIM_INVALID', request_id: claimedRequestId }
   }
 
+  let baseDynamicVariables: Record<string, string>
+  try {
+    baseDynamicVariables = await getRetellDynamicVariables(claim.retell_agent_id)
+  } catch (error) {
+    try {
+      await markFailed(attemptId, 'Could not load the Retell agent context.')
+    } catch {
+      console.error('[Retell scheduling] Could not close attempt after context failure.', { requestId, attemptId })
+    }
+    console.error('[Retell scheduling] Agent context unavailable.', {
+      requestId,
+      attemptId,
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+    })
+    return { ok: false as const, code: 'SCHEDULING_CONTEXT_UNAVAILABLE', request_id: claimedRequestId, attempt_id: attemptId }
+  }
+
   const dynamicVariables: Record<string, string> = {
+    ...baseDynamicVariables,
     scheduling_mode: 'deposit_follow_up',
     request_id: claimedRequestId,
     patient_name: claim.patient_name,

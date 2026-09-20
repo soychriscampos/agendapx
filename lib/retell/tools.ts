@@ -276,6 +276,23 @@ export async function getRetellInboundContext(agentId: string, technicalPhoneNum
   }
 }
 
+function greetingForTimezone(timezone: string) {
+  const localTime = getDateTimeInTimezone(timezone, new Date()).time
+  const hour = Number(localTime.slice(0, 2))
+  if (hour >= 5 && hour < 12) return 'Buenos días'
+  if (hour >= 12 && hour < 20) return 'Buenas tardes'
+  return 'Buenas noches'
+}
+
+/** Builds the same minimal prompt variables used by the inbound webhook. */
+export async function getRetellDynamicVariables(agentId: string, technicalPhoneNumber?: string): Promise<Record<string, string>> {
+  const context = await getRetellInboundContext(agentId, technicalPhoneNumber)
+  return Object.fromEntries(
+    Object.entries({ ...context, greeting: greetingForTimezone(context.timezone) })
+      .map(([key, value]) => [key, String(value)]),
+  )
+}
+
 async function assertRequestBelongsToDoctor(doctorId: string, requestId: string) {
   const supabase = createAdminClient()
   const { data, error } = await supabase
