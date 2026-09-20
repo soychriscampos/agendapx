@@ -80,6 +80,8 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
 
 Para reutilizar un paciente existente, agregar `patient_id`; de lo contrario la RPC crea un paciente nuevo ligado al contacto.
 
+Si el paciente ya expresó una preferencia durante la conversación, `args` puede incluir `preferred_local_date` (`YYYY-MM-DD`) y opcionalmente `preferred_local_period` (`MORNING` o `AFTERNOON`) o `preferred_local_time` (`HH:MM`). Sólo se envía periodo u hora junto con una fecha, y no se envían ambos a la vez. Son datos informativos para scheduling posterior; no reservan un horario ni son obligatorios antes de solicitar un anticipo.
+
 ## Disponibilidad
 
 ```bash
@@ -118,3 +120,7 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
 ```
 
 Ese camino sólo funciona fuera de producción y no sustituye la verificación oficial de Retell.
+
+## Lifecycle outbound de scheduling
+
+Configura el webhook `POST /api/integrations/retell/webhook` para el evento `call_ended`. Verifica la firma oficial y finaliza únicamente intentos outbound de Fase 10 mediante `finish_scheduling_call`, resueltos por `call.call_id`.
