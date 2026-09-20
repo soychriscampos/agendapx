@@ -10,3 +10,7 @@ La integración usa estas variables server-only:
 No se deben prefijar los secretos con `NEXT_PUBLIC_`. El backend llama las RPC de Fase 9 mediante el cliente Supabase service-role. La confirmación pública valida la firma antes de consultar la acción y requiere un POST explícito. La entrega usa la clave estable de Resend `deposit-request/{requestId}`.
 
 Los marcadores disponibles en `message_template` para el mensaje manual de WhatsApp son `{patient}`, `{doctor}`, `{amount}`, `{bank}`, `{account_holder}`, `{clabe}`, `{account_number}` e `{instructions}`; también se aceptan sus equivalentes en español `{paciente}`, `{monto}`, `{banco}`, `{titular}`, `{cuenta}` e `{instrucciones}`.
+
+## Deuda técnica fuera de Fase 9
+
+Si una relación `patient_contacts` ya existe, `prepare_booking_from_call` reutiliza la relación persistida y no actualiza `relationship`, aunque una llamada posterior entregue un valor distinto. Debe revisarse fuera de Fase 9 para decidir si la relación debe actualizarse o si la relación debe almacenarse como snapshot por solicitud.

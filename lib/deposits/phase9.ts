@@ -64,6 +64,7 @@ export function getDepositConfirmationUrl(actionId: string) {
 export function buildDepositWhatsAppMessage(payload: DepositEmailPayload) {
   const payment = payload.deposit.payment_instructions
   const amount = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(payload.deposit.amount)
+  const amountValue = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(payload.deposit.amount)
   const values: Record<string, string> = {
     patient: payload.patient.name,
     paciente: payload.patient.name,
@@ -88,17 +89,19 @@ export function buildDepositWhatsAppMessage(payload: DepositEmailPayload) {
   })
   if (template) return renderTemplate(template)
 
-  const defaultMessage = [
+  const paymentLines = [
+    payment?.bank_name?.trim() ? `Banco: _${payment.bank_name.trim()}_` : null,
+    payment?.account_holder?.trim() ? `Titular: _${payment.account_holder.trim()}_` : null,
+    payment?.clabe?.trim() ? `CLABE: _${payment.clabe.trim()}_` : null,
+    payment?.account_number?.trim() ? `Cuenta: _${payment.account_number.trim()}_` : null,
+  ].filter((line): line is string => line !== null)
+  const instructions = payment?.instructions?.trim() ?? ''
+  const paymentDetails = paymentLines.join('\n')
+  return [
     `Hola, te compartimos los datos para realizar el anticipo de la cita de ${payload.patient.name}.`,
-    `Doctor: ${payload.doctor.name}`,
-    `Anticipo: ${amount} MXN`,
-    payment?.bank_name ? `Banco: ${payment.bank_name}` : null,
-    payment?.account_holder ? `Titular: ${payment.account_holder}` : null,
-    payment?.clabe ? `CLABE: ${payment.clabe}` : null,
-    payment?.account_number ? `Cuenta: ${payment.account_number}` : null,
-    payment?.instructions,
-  ].filter(Boolean).join('\n')
-  return defaultMessage
+    `Doctor: ${payload.doctor.name}\n*Anticipo: $${amountValue} MXN*`,
+    paymentDetails && instructions ? `${paymentDetails}\n\n${instructions}` : paymentDetails || instructions,
+  ].filter((section): section is string => Boolean(section)).join('\n\n')
 }
 
 export function getDepositWhatsAppUrl(payload: DepositEmailPayload) {
