@@ -80,6 +80,8 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
 
 Para reutilizar un paciente existente, agregar `patient_id`; de lo contrario la RPC crea un paciente nuevo ligado al contacto.
 
+`caller_phone_number` debe ser un teléfono mexicano de exactamente 10 dígitos si se proporciona sin prefijo, o un número internacional completo en formato E.164 con `+`.
+
 `prepare_booking` no recibe ni persiste preferencias de fecha, periodo u hora. Si la solicitud requiere anticipo, la llamada outbound posterior comienza la selección de horario desde cero. Si no requiere anticipo, el agente continúa con `get_availability` y `book_appointment` usando el request creado.
 
 ## Disponibilidad

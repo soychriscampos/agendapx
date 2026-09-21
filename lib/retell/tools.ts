@@ -315,10 +315,17 @@ export async function prepareRetellBooking(input: unknown) {
   if (!RELATIONSHIPS.has(relationship)) throw new RetellToolError('INVALID_REQUEST', 'La relación con el paciente no es válida.')
 
   let phoneE164: string
+  const callerPhoneNumber = requiredString(body, 'caller_phone_number')
   try {
-    phoneE164 = normalizePhoneToE164(requiredString(body, 'caller_phone_number'))
+    phoneE164 = normalizePhoneToE164(callerPhoneNumber)
   } catch {
-    throw new RetellToolError('INVALID_REQUEST', 'El teléfono de quien llama no es válido.')
+    throw new RetellToolError(
+      'INVALID_REQUEST',
+      'El teléfono de quien llama no es válido.',
+      400,
+      false,
+      'Necesito un número de teléfono mexicano válido de 10 dígitos. ¿Me lo puedes repetir, por favor?',
+    )
   }
 
   const supabase = createAdminClient()
