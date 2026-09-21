@@ -15,6 +15,7 @@ type SchedulingClaim = {
   attempt_number?: number
   attempt_status?: string
   retell_call_id?: string | null
+  doctor_id?: string
   retell_agent_id?: string
   from_number?: string
   to_number?: string
@@ -56,6 +57,33 @@ async function markFailed(attemptId: string, error: string) {
   if (rpcError) throw rpcError
   const result = asRecord(data)
   if (result?.ok !== true) throw new Error('No se pudo marcar fallido el intento outbound.')
+}
+
+async function getContactName(admin: ReturnType<typeof createAdminClient>, doctorId: string, requestId: string) {
+  try {
+    const { data: request } = await admin
+      .from('appointment_requests')
+      .select('origin_contact_id')
+      .eq('id', requestId)
+      .eq('doctor_id', doctorId)
+      .maybeSingle()
+    if (!request?.origin_contact_id) return null
+
+    const { data: contact } = await admin
+      .from('contacts')
+      .select('full_name')
+      .eq('id', request.origin_contact_id)
+      .eq('doctor_id', doctorId)
+      .maybeSingle()
+    return typeof contact?.full_name === 'string' && contact.full_name.trim() ? contact.full_name.trim() : null
+  } catch {
+    return null
+  }
+}
+
+function schedulingBeginMessage(variables: Record<string, string>, patientName: string, contactName: string | null) {
+  const greeting = contactName ? `${variables.greeting}, ${contactName}.` : `${variables.greeting}.`
+  return `${greeting} Soy ${variables.assistant_name}, del consultorio del Dr. ${variables.doctor_name}. Ya tenemos confirmado el anticipo de la cita de ${patientName} y te llamo para terminar de agendarla.`
 }
 
 function isDefiniteRejection(error: unknown) {
@@ -141,6 +169,7 @@ export async function startDepositSchedulingCall(requestId: string) {
 
   const dynamicVariables: Record<string, string> = {
     ...baseDynamicVariables,
+    call_mode: 'deposit_follow_up',
     scheduling_mode: 'deposit_follow_up',
     request_id: claimedRequestId,
     patient_name: claim.patient_name,
@@ -152,6 +181,11 @@ export async function startDepositSchedulingCall(requestId: string) {
   if (preferredDate !== undefined) dynamicVariables.preferred_local_date = preferredDate
   if (preferredPeriod !== undefined) dynamicVariables.preferred_local_period = preferredPeriod
   if (preferredTime !== undefined) dynamicVariables.preferred_local_time = preferredTime
+
+  const contactName = nonEmpty(claim.doctor_id)
+    ? await getContactName(admin, claim.doctor_id, claimedRequestId)
+    : null
+  const beginMessage = schedulingBeginMessage(baseDynamicVariables, claim.patient_name, contactName)
 
   let retellClient: ReturnType<typeof getRetellClient>
   try {
@@ -172,6 +206,11 @@ export async function startDepositSchedulingCall(requestId: string) {
       from_number: claim.from_number,
       to_number: claim.to_number,
       override_agent_id: claim.retell_agent_id,
+      agent_override: {
+        retell_llm: {
+          begin_message: beginMessage,
+        },
+      },
       metadata: { request_id: claim.request_id, scheduling_attempt_id: attemptId },
       retell_llm_dynamic_variables: dynamicVariables,
     })
