@@ -229,6 +229,48 @@ export async function startDepositSchedulingCall(requestId: string) {
     })
     if (error) throw error
     const dispatched = asRecord(data)
+    const dispatchCode = typeof dispatched?.code === 'string' ? dispatched.code : null
+    if (dispatchCode === 'CALL_ALREADY_FINISHED') {
+      console.info('[Retell scheduling] Webhook finalized the call before dispatch persistence.', {
+        requestId,
+        attemptId,
+        retellCallId,
+        code: dispatchCode,
+      })
+      return {
+        ok: true as const,
+        idempotent: true,
+        code: dispatchCode,
+        request_id: claimedRequestId,
+        attempt_id: attemptId,
+        retell_call_id: retellCallId,
+      }
+    }
+    if (dispatchCode === 'CALL_ALREADY_DISPATCHED') {
+      console.info('[Retell scheduling] Dispatch persistence was already recorded.', {
+        requestId,
+        attemptId,
+        retellCallId,
+        code: dispatchCode,
+      })
+      return {
+        ok: true as const,
+        idempotent: true,
+        code: dispatchCode,
+        request_id: claimedRequestId,
+        attempt_id: attemptId,
+        retell_call_id: retellCallId,
+      }
+    }
+    if (dispatchCode === 'RETELL_CALL_ID_MISMATCH') {
+      console.error('[Retell scheduling] Dispatch call id does not match the persisted attempt.', {
+        requestId,
+        attemptId,
+        retellCallId,
+        code: dispatchCode,
+      })
+      return { ok: false as const, code: 'DISPATCH_CALL_ID_MISMATCH', request_id: claimedRequestId, attempt_id: attemptId }
+    }
     if (dispatched?.ok !== true) throw new Error('Dispatch persistence was rejected.')
   } catch (error) {
     // Retell already returned a call id. Never mark this attempt FAILED or

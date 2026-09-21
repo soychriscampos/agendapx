@@ -49,6 +49,14 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
     : null
 }
 
+function schedulingMetadata(value: unknown) {
+  const metadata = objectRecord(value)
+  const attemptId = metadata?.scheduling_attempt_id
+  const requestId = metadata?.request_id
+  if (typeof attemptId !== 'string' || !attemptId.trim() || typeof requestId !== 'string' || !requestId.trim()) return null
+  return { attemptId: attemptId.trim(), requestId: requestId.trim() }
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.text()
   const apiKey = process.env.RETELL_API_KEY
@@ -92,17 +100,32 @@ export async function POST(request: Request) {
   const callId = call.call_id.trim()
   const agentId = call.agent_id.trim()
   const outcome = classifyOutcome(call as unknown as Pick<PhoneCallResponse, 'call_status' | 'disconnection_reason'>)
+  const metadata = schedulingMetadata(call.metadata)
 
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin.rpc('finish_scheduling_call', {
-      p_retell_call_id: callId,
-      p_agent_id: agentId,
-      p_outcome: outcome,
-    })
+    const usedMetadata = metadata !== null
+    const { data, error } = metadata
+      ? await admin.rpc('finish_scheduling_call_by_attempt', {
+          p_attempt_id: metadata.attemptId,
+          p_request_id: metadata.requestId,
+          p_retell_call_id: callId,
+          p_agent_id: agentId,
+          p_outcome: outcome,
+        })
+      : await admin.rpc('finish_scheduling_call', {
+          p_retell_call_id: callId,
+          p_agent_id: agentId,
+          p_outcome: outcome,
+        })
 
     if (error) {
-      console.error('[retell-webhook] failed', { call_id: callId, event: body.event, code: 'LIFECYCLE_RPC_ERROR' })
+      console.error('[retell-webhook] failed', {
+        call_id: callId,
+        event: body.event,
+        mode: usedMetadata ? 'metadata' : 'call_id_fallback',
+        code: 'LIFECYCLE_RPC_ERROR',
+      })
       return Response.json({ ok: false, code: 'INTERNAL_ERROR' }, { status: 500 })
     }
 
@@ -114,10 +137,20 @@ export async function POST(request: Request) {
       'SCHEDULING_CALL_FINISHED',
     ])
 
-    console.info('[retell-webhook] processed', { call_id: callId, event: body.event, code })
+    console.info('[retell-webhook] processed', {
+      call_id: callId,
+      event: body.event,
+      mode: usedMetadata ? 'metadata' : 'call_id_fallback',
+      code,
+    })
     return Response.json({ ok: successfulCodes.has(code), code })
   } catch {
-    console.error('[retell-webhook] failed', { call_id: callId, event: body.event, code: 'LIFECYCLE_INTERNAL_ERROR' })
+    console.error('[retell-webhook] failed', {
+      call_id: callId,
+      event: body.event,
+      mode: metadata ? 'metadata' : 'call_id_fallback',
+      code: 'LIFECYCLE_INTERNAL_ERROR',
+    })
     return Response.json({ ok: false, code: 'INTERNAL_ERROR' }, { status: 500 })
   }
 }
