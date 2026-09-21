@@ -50,7 +50,10 @@ function argsRecord(body: Record<string, unknown>) {
 
 function errorResponse(error: unknown) {
   if (error instanceof RetellToolError) {
-    return Response.json({ ok: false, code: error.code, error: error.message, retryable: error.retryable }, { status: error.status })
+    const agentMessage = error.code === 'INVALID_REQUEST'
+      ? error.agentMessage ?? 'No pude continuar con la información recibida. Pregunta por el dato faltante o corrígelo y vuelve a intentarlo.'
+      : error.message
+    return Response.json({ ok: false, code: error.code, error: agentMessage, retryable: error.retryable }, { status: error.status })
   }
   return Response.json({ ok: false, code: 'INTERNAL_ERROR', error: 'No se pudo completar la operación.' }, { status: 500 })
 }
@@ -65,7 +68,12 @@ export async function POST(request: Request) {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid')
     body = parsed as Record<string, unknown>
   } catch {
-    return Response.json({ ok: false, code: 'INVALID_REQUEST', error: 'El cuerpo JSON no es válido.' }, { status: 400 })
+    return Response.json({
+      ok: false,
+      code: 'INVALID_REQUEST',
+      error: 'No pude continuar con la información recibida. Pregunta por el dato faltante o corrígelo y vuelve a intentarlo.',
+      retryable: false,
+    }, { status: 400 })
   }
 
   try {

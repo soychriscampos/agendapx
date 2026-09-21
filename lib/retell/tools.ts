@@ -31,7 +31,13 @@ type DepositResolution = {
 }
 
 export class RetellToolError extends Error {
-  constructor(public readonly code: string, message: string, public readonly status = 400, public readonly retryable = false) {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status = 400,
+    public readonly retryable = false,
+    public readonly agentMessage?: string,
+  ) {
     super(message)
   }
 }
@@ -82,26 +88,50 @@ function optionalPreferenceValue(body: JsonRecord, key: string) {
 
 function parseSchedulingPreference(body: JsonRecord) {
   const preferredLocalDate = optionalPreferenceValue(body, 'preferred_local_date')
-  const preferredLocalPeriod = optionalPreferenceValue(body, 'preferred_local_period')
+  let preferredLocalPeriod = optionalPreferenceValue(body, 'preferred_local_period')
   const preferredLocalTime = optionalPreferenceValue(body, 'preferred_local_time')
 
   if (preferredLocalDate !== undefined) {
     const instant = new Date(`${preferredLocalDate}T00:00:00Z`)
     if (!DATE_PATTERN.test(preferredLocalDate) || Number.isNaN(instant.getTime()) || instant.toISOString().slice(0, 10) !== preferredLocalDate) {
-      throw new RetellToolError('INVALID_REQUEST', 'El campo preferred_local_date debe usar YYYY-MM-DD.')
+      throw new RetellToolError(
+        'INVALID_REQUEST',
+        'El campo preferred_local_date debe usar YYYY-MM-DD.',
+        400,
+        false,
+        'Necesito una fecha válida para registrar esa preferencia.',
+      )
     }
   }
   if (preferredLocalPeriod !== undefined && preferredLocalPeriod !== 'MORNING' && preferredLocalPeriod !== 'AFTERNOON') {
-    throw new RetellToolError('INVALID_REQUEST', 'El campo preferred_local_period debe ser MORNING o AFTERNOON.')
+    throw new RetellToolError(
+      'INVALID_REQUEST',
+      'El campo preferred_local_period debe ser MORNING o AFTERNOON.',
+      400,
+      false,
+      'No pude identificar si prefieres mañana o tarde. Pregúntale cuál prefiere.',
+    )
   }
   if (preferredLocalTime !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(preferredLocalTime)) {
-    throw new RetellToolError('INVALID_REQUEST', 'El campo preferred_local_time debe usar HH:MM en hora local.')
+    throw new RetellToolError(
+      'INVALID_REQUEST',
+      'El campo preferred_local_time debe usar HH:MM en hora local.',
+      400,
+      false,
+      'Necesito una hora válida para registrar esa preferencia.',
+    )
+  }
+  if (preferredLocalTime !== undefined) {
+    preferredLocalPeriod = undefined
   }
   if ((preferredLocalPeriod !== undefined || preferredLocalTime !== undefined) && preferredLocalDate === undefined) {
-    throw new RetellToolError('INVALID_REQUEST', 'La fecha es obligatoria cuando se indica periodo u hora preferidos.')
-  }
-  if (preferredLocalPeriod !== undefined && preferredLocalTime !== undefined) {
-    throw new RetellToolError('INVALID_REQUEST', 'No se puede indicar periodo y hora preferidos simultáneamente.')
+    throw new RetellToolError(
+      'INVALID_REQUEST',
+      'La fecha es obligatoria cuando se indica periodo u hora preferidos.',
+      400,
+      false,
+      'Necesito una fecha para registrar esa preferencia.',
+    )
   }
 
   return { preferredLocalDate, preferredLocalPeriod, preferredLocalTime }
