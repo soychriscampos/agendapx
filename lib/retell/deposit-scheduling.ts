@@ -21,9 +21,6 @@ type SchedulingClaim = {
   to_number?: string
   patient_name?: string
   appointment_type_name?: string | null
-  preferred_local_date?: string | null
-  preferred_local_period?: string | null
-  preferred_local_time?: string | null
 }
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -39,13 +36,6 @@ function parseClaim(value: unknown): SchedulingClaim | null {
 
 function nonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
-}
-
-function optionalVariable(value: unknown) {
-  if (value === null || value === undefined || value === '') return undefined
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
-  return undefined
 }
 
 async function markFailed(attemptId: string, error: string) {
@@ -175,13 +165,6 @@ export async function startDepositSchedulingCall(requestId: string) {
     patient_name: claim.patient_name,
     appointment_type_name: claim.appointment_type_name,
   }
-  const preferredDate = optionalVariable(claim.preferred_local_date)
-  const preferredPeriod = optionalVariable(claim.preferred_local_period)
-  const preferredTime = optionalVariable(claim.preferred_local_time)
-  if (preferredDate !== undefined) dynamicVariables.preferred_local_date = preferredDate
-  if (preferredPeriod !== undefined) dynamicVariables.preferred_local_period = preferredPeriod
-  if (preferredTime !== undefined) dynamicVariables.preferred_local_time = preferredTime
-
   const contactName = nonEmpty(claim.doctor_id)
     ? await getContactName(admin, claim.doctor_id, claimedRequestId)
     : null

@@ -80,7 +80,7 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
 
 Para reutilizar un paciente existente, agregar `patient_id`; de lo contrario la RPC crea un paciente nuevo ligado al contacto.
 
-Si el paciente ya expresó una preferencia durante la conversación, `args` puede incluir `preferred_local_date` (`YYYY-MM-DD`) y opcionalmente `preferred_local_period` (`MORNING` o `AFTERNOON`) o `preferred_local_time` (`HH:MM`). Sólo se envía periodo u hora junto con una fecha, y no se envían ambos a la vez. Son datos informativos para scheduling posterior; no reservan un horario ni son obligatorios antes de solicitar un anticipo.
+`prepare_booking` no recibe ni persiste preferencias de fecha, periodo u hora. Si la solicitud requiere anticipo, la llamada outbound posterior comienza la selección de horario desde cero. Si no requiere anticipo, el agente continúa con `get_availability` y `book_appointment` usando el request creado.
 
 ## Disponibilidad
 

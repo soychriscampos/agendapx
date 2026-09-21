@@ -79,64 +79,6 @@ function requiredDate(body: JsonRecord, key: string) {
   return value
 }
 
-function optionalPreferenceValue(body: JsonRecord, key: string) {
-  const value = body[key]
-  if (value === undefined || value === null || value === '') return undefined
-  if (typeof value !== 'string') throw new RetellToolError('INVALID_REQUEST', `El campo ${key} no es válido.`)
-  return value
-}
-
-function parseSchedulingPreference(body: JsonRecord) {
-  const preferredLocalDate = optionalPreferenceValue(body, 'preferred_local_date')
-  let preferredLocalPeriod = optionalPreferenceValue(body, 'preferred_local_period')
-  const preferredLocalTime = optionalPreferenceValue(body, 'preferred_local_time')
-
-  if (preferredLocalDate !== undefined) {
-    const instant = new Date(`${preferredLocalDate}T00:00:00Z`)
-    if (!DATE_PATTERN.test(preferredLocalDate) || Number.isNaN(instant.getTime()) || instant.toISOString().slice(0, 10) !== preferredLocalDate) {
-      throw new RetellToolError(
-        'INVALID_REQUEST',
-        'El campo preferred_local_date debe usar YYYY-MM-DD.',
-        400,
-        false,
-        'Necesito una fecha válida para registrar esa preferencia.',
-      )
-    }
-  }
-  if (preferredLocalPeriod !== undefined && preferredLocalPeriod !== 'MORNING' && preferredLocalPeriod !== 'AFTERNOON') {
-    throw new RetellToolError(
-      'INVALID_REQUEST',
-      'El campo preferred_local_period debe ser MORNING o AFTERNOON.',
-      400,
-      false,
-      'No pude identificar si prefieres mañana o tarde. Pregúntale cuál prefiere.',
-    )
-  }
-  if (preferredLocalTime !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(preferredLocalTime)) {
-    throw new RetellToolError(
-      'INVALID_REQUEST',
-      'El campo preferred_local_time debe usar HH:MM en hora local.',
-      400,
-      false,
-      'Necesito una hora válida para registrar esa preferencia.',
-    )
-  }
-  if (preferredLocalTime !== undefined) {
-    preferredLocalPeriod = undefined
-  }
-  if ((preferredLocalPeriod !== undefined || preferredLocalTime !== undefined) && preferredLocalDate === undefined) {
-    throw new RetellToolError(
-      'INVALID_REQUEST',
-      'La fecha es obligatoria cuando se indica periodo u hora preferidos.',
-      400,
-      false,
-      'Necesito una fecha para registrar esa preferencia.',
-    )
-  }
-
-  return { preferredLocalDate, preferredLocalPeriod, preferredLocalTime }
-}
-
 function rejectDoctorId(body: JsonRecord) {
   if (body.doctor_id !== undefined) throw new RetellToolError('INVALID_REQUEST', 'doctor_id no es un parámetro permitido.')
 }
@@ -369,7 +311,6 @@ export async function prepareRetellBooking(input: unknown) {
   const body = record(input)
   rejectDoctorId(body)
   const doctor = await resolveRetellDoctor(requiredString(body, 'agent_id'), optionalString(body, 'phone_number'))
-  const preference = parseSchedulingPreference(body)
   const relationship = requiredString(body, 'relationship').toUpperCase()
   if (!RELATIONSHIPS.has(relationship)) throw new RetellToolError('INVALID_REQUEST', 'La relación con el paciente no es válida.')
 
@@ -398,26 +339,6 @@ export async function prepareRetellBooking(input: unknown) {
   const requiresDeposit = result.requires_deposit === true
   const requestId = typeof result.request_id === 'string' ? result.request_id : null
   let deposit: DepositResolution | undefined
-
-  const hasSchedulingPreference = preference.preferredLocalDate !== undefined
-    || preference.preferredLocalPeriod !== undefined
-    || preference.preferredLocalTime !== undefined
-  if (requestId && hasSchedulingPreference && result.request_status === 'WAITING_DEPOSIT') {
-    const { data: updatedRequest, error: preferenceError } = await supabase
-      .from('appointment_requests')
-      .update({
-        preferred_local_date: preference.preferredLocalDate ?? null,
-        preferred_local_period: preference.preferredLocalPeriod ?? null,
-        preferred_local_time: preference.preferredLocalTime ?? null,
-      })
-      .eq('id', requestId)
-      .eq('doctor_id', doctor.id)
-      .select('id')
-      .maybeSingle()
-    if (preferenceError || updatedRequest?.id !== requestId) {
-      throw new RetellToolError('SCHEDULING_PREFERENCE_SAVE_FAILED', 'No se pudo guardar la preferencia de horario.', 500, true)
-    }
-  }
 
   if (requiresDeposit) {
     if (!requestId) throw new RetellToolError('PREPARE_BOOKING_INVALID', 'La preparación indicó un anticipo sin request_id.', 502)
