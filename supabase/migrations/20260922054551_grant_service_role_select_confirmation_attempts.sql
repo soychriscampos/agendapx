@@ -1,0 +1,3 @@
+grant select
+on table public.appointment_confirmation_call_attempts
+to service_role;
