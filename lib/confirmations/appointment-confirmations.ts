@@ -142,3 +142,80 @@ export async function deliverAppointmentConfirmationEmail(appointmentId: string)
 export function localAppointmentDateTime(timezone: string, startAt: string) {
   return getDateTimeInTimezone(timezone, new Date(startAt))
 }
+
+/** Builds the existing WhatsApp handoff URL without starting or mutating a reminder. */
+export async function getAppointmentConfirmationReminderWhatsAppUrl(appointmentId: string) {
+  const admin = createAdminClient()
+  const { data: appointment, error: appointmentError } = await admin
+    .from('appointments')
+    .select('id, doctor_id, patient_id, patient_name, appointment_request_id, start_at, status, confirmation_status')
+    .eq('id', appointmentId)
+    .maybeSingle()
+  if (appointmentError || !appointment || appointment.status !== 'CONFIRMED' || appointment.confirmation_status !== 'REMINDER_STARTED') return null
+
+  const [doctorQuery, patientQuery] = await Promise.all([
+    admin.from('doctors').select('display_name, timezone').eq('id', appointment.doctor_id).maybeSingle(),
+    appointment.patient_id
+      ? admin.from('patients').select('full_name').eq('id', appointment.patient_id).eq('doctor_id', appointment.doctor_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+  if (doctorQuery.error || !doctorQuery.data || patientQuery.error) return null
+
+  let phone: string | null = null
+  if (appointment.appointment_request_id) {
+    const { data: request, error: requestError } = await admin
+      .from('appointment_requests')
+      .select('origin_contact_id, origin_contact_phone_id')
+      .eq('id', appointment.appointment_request_id)
+      .eq('doctor_id', appointment.doctor_id)
+      .maybeSingle()
+    if (requestError) return null
+    if (request) {
+      const { data: phoneRow, error: phoneError } = await admin
+        .from('contact_phones')
+        .select('phone_e164')
+        .eq('id', request.origin_contact_phone_id)
+        .eq('contact_id', request.origin_contact_id)
+        .eq('doctor_id', appointment.doctor_id)
+        .maybeSingle()
+      if (phoneError) return null
+      phone = phoneRow?.phone_e164 ?? null
+    }
+  }
+
+  if (!phone && appointment.patient_id) {
+    const { data: relation, error: relationError } = await admin
+      .from('patient_contacts')
+      .select('contact_id')
+      .eq('patient_id', appointment.patient_id)
+      .eq('doctor_id', appointment.doctor_id)
+      .eq('relationship', 'SELF')
+      .limit(1)
+      .maybeSingle()
+    if (relationError) return null
+    if (relation) {
+      const { data: phoneRow, error: phoneError } = await admin
+        .from('contact_phones')
+        .select('phone_e164')
+        .eq('contact_id', relation.contact_id)
+        .eq('doctor_id', appointment.doctor_id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (phoneError) return null
+      phone = phoneRow?.phone_e164 ?? null
+    }
+  }
+
+  const normalizedPhone = phone?.replace(/^\+/, '').replace(/\D/g, '')
+  if (!normalizedPhone) return null
+  const local = getDateTimeInTimezone(doctorQuery.data.timezone, new Date(appointment.start_at))
+  const localDate = new Intl.DateTimeFormat('es-MX', { timeZone: doctorQuery.data.timezone, day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(appointment.start_at))
+  const message = buildAppointmentConfirmationWhatsAppMessage({
+    patientName: patientQuery.data?.full_name ?? appointment.patient_name,
+    doctorName: doctorQuery.data.display_name,
+    localDate,
+    localTime: local.time,
+  })
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
+}
