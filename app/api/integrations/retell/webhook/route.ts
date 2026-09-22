@@ -2,6 +2,7 @@ import { Retell } from 'retell-sdk'
 import type { PhoneCallResponse } from 'retell-sdk/resources/call'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { deliverAppointmentConfirmationEmail } from '@/lib/confirmations/appointment-confirmations'
 
 type SchedulingOutcome = 'COMPLETED' | 'NO_ANSWER' | 'INTERRUPTED'
 
@@ -57,6 +58,14 @@ function schedulingMetadata(value: unknown) {
   return { attemptId: attemptId.trim(), requestId: requestId.trim() }
 }
 
+function confirmationMetadata(value: unknown) {
+  const metadata = objectRecord(value)
+  const attemptId = metadata?.confirmation_attempt_id
+  const appointmentId = metadata?.appointment_id
+  if (metadata?.call_mode !== 'appointment_confirmation' || typeof attemptId !== 'string' || !attemptId.trim() || typeof appointmentId !== 'string' || !appointmentId.trim()) return null
+  return { attemptId: attemptId.trim(), appointmentId: appointmentId.trim() }
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.text()
   const apiKey = process.env.RETELL_API_KEY
@@ -100,30 +109,56 @@ export async function POST(request: Request) {
   const callId = call.call_id.trim()
   const agentId = call.agent_id.trim()
   const outcome = classifyOutcome(call as unknown as Pick<PhoneCallResponse, 'call_status' | 'disconnection_reason'>)
+  const confirmation = confirmationMetadata(call.metadata)
   const metadata = schedulingMetadata(call.metadata)
 
   try {
     const admin = createAdminClient()
-    const usedMetadata = metadata !== null
-    const { data, error } = metadata
-      ? await admin.rpc('finish_scheduling_call_by_attempt', {
+    const usedMetadata = metadata !== null || confirmation !== null
+    let mode = confirmation ? 'appointment_confirmation' : 'deposit_follow_up'
+    let response
+    if (confirmation) {
+      response = await admin.rpc('finish_appointment_confirmation_call_by_attempt', {
+        p_attempt_id: confirmation.attemptId,
+        p_appointment_id: confirmation.appointmentId,
+        p_retell_call_id: callId,
+        p_agent_id: agentId,
+        p_outcome: outcome,
+      })
+    } else if (metadata) {
+      response = await admin.rpc('finish_scheduling_call_by_attempt', {
           p_attempt_id: metadata.attemptId,
           p_request_id: metadata.requestId,
           p_retell_call_id: callId,
           p_agent_id: agentId,
           p_outcome: outcome,
         })
-      : await admin.rpc('finish_scheduling_call', {
+    } else {
+      // Try the new confirmation lifecycle first. Its NOT_FOUND result is
+      // harmless, then retain Fase 10's call_id fallback exactly as before.
+      const confirmationFallback = await admin.rpc('finish_appointment_confirmation_call', {
+        p_retell_call_id: callId,
+        p_agent_id: agentId,
+        p_outcome: outcome,
+      })
+      const fallbackResult = objectRecord(confirmationFallback.data)
+      const fallbackCode = typeof fallbackResult?.code === 'string' ? fallbackResult.code : ''
+      response = fallbackCode === 'CONFIRMATION_CALL_NOT_FOUND' || fallbackCode === 'APPOINTMENT_CONFIRMATION_CALL_NOT_FOUND'
+        ? await admin.rpc('finish_scheduling_call', {
           p_retell_call_id: callId,
           p_agent_id: agentId,
           p_outcome: outcome,
         })
+        : confirmationFallback
+      if (response === confirmationFallback) mode = 'appointment_confirmation'
+    }
+    const { data, error } = response
 
     if (error) {
       console.error('[retell-webhook] failed', {
         call_id: callId,
         event: body.event,
-        mode: usedMetadata ? 'metadata' : 'call_id_fallback',
+        mode: usedMetadata ? `${mode}:metadata` : 'call_id_fallback',
         code: 'LIFECYCLE_RPC_ERROR',
       })
       return Response.json({ ok: false, code: 'INTERNAL_ERROR' }, { status: 500 })
@@ -135,14 +170,28 @@ export async function POST(request: Request) {
       'CALL_ALREADY_FINISHED',
       'SCHEDULING_CALL_NOT_FOUND',
       'SCHEDULING_CALL_FINISHED',
+      'CONFIRMATION_CALL_NOT_FOUND',
+      'CONFIRMATION_CALL_FINISHED',
+      'APPOINTMENT_CONFIRMATION_CALL_NOT_FOUND',
+      'APPOINTMENT_CONFIRMATION_CALL_FINISHED',
     ])
 
     console.info('[retell-webhook] processed', {
       call_id: callId,
       event: body.event,
-      mode: usedMetadata ? 'metadata' : 'call_id_fallback',
+      mode: usedMetadata ? `${mode}:metadata` : 'call_id_fallback',
       code,
     })
+    if (mode === 'appointment_confirmation' && outcome === 'NO_ANSWER' && successfulCodes.has(code)) {
+      // The lifecycle RPC first persists REMINDER_PENDING. Delivery remains
+      // idempotent and refuses to resend a delivery already marked SENT.
+      const appointmentId = confirmation?.appointmentId ?? (typeof result?.appointment_id === 'string' ? result.appointment_id : null)
+      if (appointmentId) {
+        await deliverAppointmentConfirmationEmail(appointmentId).catch((deliveryError) => {
+          console.error('[retell-webhook] confirmation reminder delivery failed', { call_id: callId, deliveryError })
+        })
+      }
+    }
     return Response.json({ ok: successfulCodes.has(code), code })
   } catch {
     console.error('[retell-webhook] failed', {

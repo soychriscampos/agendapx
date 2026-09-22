@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createManualAppointmentRequest, createAppointmentRequestForExistingContact, createAppointmentRequestForNewPatient, lookupContactByPhone, type ExistingContactLookup, type RequestIntakeAnswer } from '@/lib/requests/appointment-requests'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
+import { startAppointmentConfirmationCall } from '@/lib/retell/appointment-confirmation'
 
 export type LoginState = { error?: string }
 
@@ -467,6 +468,24 @@ export async function cancelAppointmentAction(formData: FormData): Promise<Appoi
   catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo cancelar la cita.' } }
   revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
   return { success: 'Cita cancelada.' }
+}
+
+export async function startAppointmentConfirmationAction(appointmentId: string): Promise<AppointmentActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para iniciar una confirmación.' }
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(appointmentId)) return { error: 'La cita no es válida.' }
+  try {
+    const result = await startAppointmentConfirmationCall(appointmentId)
+    if (!result.ok) {
+      if (result.code === 'CONTACT_PHONE_NOT_FOUND') return { error: 'Esta cita no tiene un teléfono de contacto para confirmar.' }
+      if (result.code === 'APPOINTMENT_CANCELLED') return { error: 'La cita ya está cancelada.' }
+      return { error: 'No fue posible iniciar la llamada de confirmación.' }
+    }
+    revalidatePath('/app/agenda')
+    return { success: result.idempotent ? 'Ya hay una confirmación en curso.' : 'Llamada de confirmación iniciada.' }
+  } catch {
+    return { error: 'No fue posible iniciar la llamada de confirmación.' }
+  }
 }
 
 export type AppointmentRequestActionState = { error?: string; success?: string; requestId?: string }

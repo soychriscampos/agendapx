@@ -123,6 +123,8 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
 
 Ese camino sólo funciona fuera de producción y no sustituye la verificación oficial de Retell.
 
-## Lifecycle outbound de scheduling
+## Lifecycle outbound
 
 Configura el webhook `POST /api/integrations/retell/webhook` para el evento `call_ended`. Verifica la firma oficial y finaliza únicamente intentos outbound de Fase 10 mediante `finish_scheduling_call`, resueltos por `call.call_id`.
+
+Las llamadas con metadata `call_mode: "appointment_confirmation"` son una ruta aislada: el webhook usa `confirmation_attempt_id` y `appointment_id`, y sólo pueden invocar `get_appointment_confirmation_context`, `confirm_appointment_attendance`, `cancel_appointment_from_confirmation`, `get_appointment_confirmation_availability` y `reschedule_appointment_from_confirmation`. No pueden invocar las herramientas de intake, anticipo o booking de solicitudes.

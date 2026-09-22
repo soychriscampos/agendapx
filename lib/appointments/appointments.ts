@@ -2,7 +2,8 @@ import type { AgendaUser } from '@/lib/auth'
 import { getDateTimeInTimezone, localDateTimeToUtc } from '@/lib/agenda/timezone'
 import { createClient } from '@/lib/supabase/server'
 
-export type Appointment = { id: string; doctorId: string; patientName: string; startAt: string; endAt: string; status: 'CONFIRMED' | 'CANCELLED'; createdSource: 'DOCTOR' | 'MASTER' | 'AGENT'; createdByUserId: string | null }
+export type AppointmentConfirmationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REMINDER_PENDING' | 'REMINDER_STARTED' | 'MANUAL_REQUIRED'
+export type Appointment = { id: string; doctorId: string; patientName: string; startAt: string; endAt: string; status: 'CONFIRMED' | 'CANCELLED'; confirmationStatus: AppointmentConfirmationStatus; createdSource: 'DOCTOR' | 'MASTER' | 'AGENT'; createdByUserId: string | null }
 export type AppointmentInput = { patientName: string; date: string; start: string; end: string }
 export type AppointmentConflict = { id: string; patientName: string; startAt: string; endAt: string }
 
@@ -56,9 +57,9 @@ export async function checkAppointmentConflict(doctorId: string, startAt: Date, 
 
 export async function listAppointments(doctorId: string): Promise<Appointment[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.from('appointments').select('id, doctor_id, patient_name, start_at, end_at, status, created_source, created_by_user_id').eq('doctor_id', doctorId).order('start_at')
+  const { data, error } = await supabase.from('appointments').select('id, doctor_id, patient_name, start_at, end_at, status, confirmation_status, created_source, created_by_user_id').eq('doctor_id', doctorId).order('start_at')
   if (error) throw new Error('No se pudieron cargar las citas.')
-  return (data ?? []).map((item) => ({ id: item.id, doctorId: item.doctor_id, patientName: item.patient_name, startAt: item.start_at, endAt: item.end_at, status: item.status, createdSource: item.created_source, createdByUserId: item.created_by_user_id }))
+  return (data ?? []).map((item) => ({ id: item.id, doctorId: item.doctor_id, patientName: item.patient_name, startAt: item.start_at, endAt: item.end_at, status: item.status, confirmationStatus: item.confirmation_status as AppointmentConfirmationStatus, createdSource: item.created_source, createdByUserId: item.created_by_user_id }))
 }
 
 export async function createAppointment(actor: AgendaUser, doctorId: string, input: AppointmentInput) {
