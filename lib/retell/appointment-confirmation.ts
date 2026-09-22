@@ -50,16 +50,16 @@ function durationLabel(minutes: number) {
   return `${minutes} minutos`
 }
 
+function appointmentDateForVoice(claim: ConfirmationClaim) {
+  if (!(claim.start_at && claim.doctor_timezone)) return claim.local_date ?? ''
+  const parts = new Intl.DateTimeFormat('es-MX', { timeZone: claim.doctor_timezone, weekday: 'long', day: 'numeric', month: 'long' })
+    .formatToParts(new Date(claim.start_at))
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  return `${values.weekday} ${values.day} de ${values.month}`
+}
+
 function confirmationBeginMessage(variables: Record<string, string>, claim: ConfirmationClaim) {
-  const date = claim.start_at && claim.doctor_timezone
-    ? (() => {
-      const parts = new Intl.DateTimeFormat('es-MX', { timeZone: claim.doctor_timezone, weekday: 'long', day: 'numeric', month: 'long' })
-        .formatToParts(new Date(claim.start_at))
-      const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
-      return `${values.weekday} ${values.day} de ${values.month}`
-    })()
-    : claim.local_date
-  return `Hola, hablo del consultorio del Dr. ${variables.doctor_name}. Llamo para confirmar la asistencia de ${claim.patient_name} a su cita del ${date} a las ${formatTimeForVoice(claim.local_time ?? '')}.`
+  return `Hola, hablo del consultorio del Dr. ${variables.doctor_name}. Llamo para confirmar la asistencia de ${claim.patient_name} a su cita del ${appointmentDateForVoice(claim)} a las ${formatTimeForVoice(claim.local_time ?? '')}.`
 }
 
 function isDefiniteRejection(error: unknown) {
@@ -129,6 +129,8 @@ export async function startAppointmentConfirmationCall(appointmentId: string) {
     appointment_type_name: claim.appointment_type_name ?? '',
     appointment_local_date: claim.local_date,
     appointment_local_time: claim.local_time,
+    appointment_date_spoken: appointmentDateForVoice(claim),
+    appointment_time_spoken: formatTimeForVoice(claim.local_time),
     appointment_duration: durationLabel(durationMinutes),
     appointment_duration_minutes: String(durationMinutes),
     appointment_timezone: claim.doctor_timezone,
