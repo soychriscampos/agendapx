@@ -191,6 +191,8 @@ export async function startDepositSchedulingCall(requestId: string) {
       override_agent_id: claim.retell_agent_id,
       agent_override: {
         retell_llm: {
+          start_speaker: 'user',
+          begin_after_user_silence_ms: 3000,
           begin_message: beginMessage,
         },
       },

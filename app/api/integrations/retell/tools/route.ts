@@ -72,17 +72,71 @@ function metadataRecord(call: Record<string, unknown>) {
   return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata as Record<string, unknown> : null
 }
 
+function supabaseErrorDetails(error: unknown) {
+  if (!error || typeof error !== 'object') return { error: String(error) }
+  const value = error as Record<string, unknown>
+  return {
+    code: value.code,
+    message: value.message,
+    details: value.details,
+    hint: value.hint,
+    status: value.status,
+  }
+}
+
+function isTransientSupabaseReadError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const value = error as Record<string, unknown>
+  const code = typeof value.code === 'string' ? value.code : ''
+  if (/^(08|53|55P03|57P0[123]|40001|40P01|57014|PGRST00[123])/.test(code)) return true
+  const message = typeof value.message === 'string' ? value.message : ''
+  return /(?:fetch failed|network|timed? ?out|econnreset|econnrefused|connection (?:reset|refused|closed|timed))/i.test(message)
+}
+
+async function readConfirmationAttempt(admin: ReturnType<typeof createAdminClient>, attemptId: string, appointmentId: string) {
+  const read = async () => {
+    try {
+      return await admin
+        .from('appointment_confirmation_call_attempts')
+        .select('id, appointment_id, retell_call_id, status')
+        .eq('id', attemptId)
+        .eq('appointment_id', appointmentId)
+        .maybeSingle()
+    } catch (error) {
+      return { data: null, error }
+    }
+  }
+
+  let result = await read()
+  if (!result.error) return result
+
+  console.error('[Retell confirmation] Could not validate call attempt.', {
+    attemptId,
+    appointmentId,
+    retry: false,
+    ...supabaseErrorDetails(result.error),
+  })
+  if (!isTransientSupabaseReadError(result.error)) return result
+
+  await new Promise((resolve) => setTimeout(resolve, 75))
+  result = await read()
+  if (result.error) {
+    console.error('[Retell confirmation] Retry could not validate call attempt.', {
+      attemptId,
+      appointmentId,
+      retry: true,
+      ...supabaseErrorDetails(result.error),
+    })
+  }
+  return result
+}
+
 async function confirmationContextForCall(call: Record<string, unknown>, agentId: string, callId: string): Promise<ConfirmationCallContext | null> {
   const metadata = metadataRecord(call)
   if (metadata?.call_mode === 'appointment_confirmation' && (call.call_type !== 'phone_call' || call.direction !== 'outbound')) return null
   if (metadata?.call_mode !== 'appointment_confirmation' || typeof metadata.appointment_id !== 'string' || typeof metadata.confirmation_attempt_id !== 'string') return null
   const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('appointment_confirmation_call_attempts')
-    .select('id, appointment_id, retell_call_id, status')
-    .eq('id', metadata.confirmation_attempt_id)
-    .eq('appointment_id', metadata.appointment_id)
-    .maybeSingle()
+  const { data, error } = await readConfirmationAttempt(admin, metadata.confirmation_attempt_id, metadata.appointment_id)
   if (error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo validar la llamada de confirmación.', 503, true)
   // Retell signs this payload. A null call ID is permitted only during the
   // webhook-before-dispatch race; a different known ID is never accepted.

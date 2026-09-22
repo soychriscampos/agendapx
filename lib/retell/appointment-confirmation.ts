@@ -3,6 +3,7 @@ import { APIError } from 'retell-sdk'
 import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
 import { getRetellClient } from '@/lib/retell/client'
 import { getRetellDynamicVariables } from '@/lib/retell/tools'
+import { formatTimeForVoice } from '@/lib/retell/voice-time'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 type RecordValue = Record<string, unknown>
@@ -50,12 +51,15 @@ function durationLabel(minutes: number) {
 }
 
 function confirmationBeginMessage(variables: Record<string, string>, claim: ConfirmationClaim) {
-  const greeting = claim.contact_name ? `${variables.greeting}, ${claim.contact_name}.` : `${variables.greeting}.`
-  const type = claim.appointment_type_name ? ` para ${claim.appointment_type_name}` : ''
   const date = claim.start_at && claim.doctor_timezone
-    ? new Intl.DateTimeFormat('es-MX', { timeZone: claim.doctor_timezone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(claim.start_at))
+    ? (() => {
+      const parts = new Intl.DateTimeFormat('es-MX', { timeZone: claim.doctor_timezone, weekday: 'long', day: 'numeric', month: 'long' })
+        .formatToParts(new Date(claim.start_at))
+      const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+      return `${values.weekday} ${values.day} de ${values.month}`
+    })()
     : claim.local_date
-  return `${greeting} Soy ${variables.assistant_name}, del consultorio del Dr. ${variables.doctor_name}. Te llamo para confirmar la asistencia de ${claim.patient_name} a su cita${type} el ${date} a las ${claim.local_time}.`
+  return `Hola, hablo del consultorio del Dr. ${variables.doctor_name}. Llamo para confirmar la asistencia de ${claim.patient_name} a su cita del ${date} a las ${formatTimeForVoice(claim.local_time ?? '')}.`
 }
 
 function isDefiniteRejection(error: unknown) {
@@ -136,7 +140,13 @@ export async function startAppointmentConfirmationCall(appointmentId: string) {
       from_number: claim.from_number,
       to_number: claim.to_number,
       override_agent_id: claim.retell_agent_id,
-      agent_override: { retell_llm: { begin_message: confirmationBeginMessage(baseVariables, claim) } },
+      agent_override: {
+        retell_llm: {
+          start_speaker: 'user',
+          begin_after_user_silence_ms: 3000,
+          begin_message: confirmationBeginMessage(baseVariables, claim),
+        },
+      },
       metadata: { appointment_id: claim.appointment_id!, confirmation_attempt_id: attemptId, call_mode: 'appointment_confirmation' },
       retell_llm_dynamic_variables: dynamicVariables,
     })
