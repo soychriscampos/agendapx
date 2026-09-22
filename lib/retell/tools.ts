@@ -445,6 +445,26 @@ export async function bookRetellAppointment(input: unknown) {
   const code = typeof result.code === 'string' ? result.code : null
   const expectedBookingCodes = new Set(['TOO_SOON', 'OUTSIDE_SCHEDULE', 'SLOT_UNAVAILABLE'])
   const expectedBookingFailure = code !== null && expectedBookingCodes.has(code)
+  let persistedStartAt = typeof result.start_at === 'string' && !Number.isNaN(new Date(result.start_at).getTime()) ? result.start_at : null
+  if (!persistedStartAt && typeof result.appointment_id === 'string') {
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('start_at')
+      .eq('id', result.appointment_id)
+      .eq('doctor_id', doctor.id)
+      .maybeSingle()
+    if (!appointmentError && typeof appointment?.start_at === 'string' && !Number.isNaN(new Date(appointment.start_at).getTime())) persistedStartAt = appointment.start_at
+  }
+  if (!persistedStartAt) {
+    const { data: appointment, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('start_at')
+      .eq('appointment_request_id', requestId)
+      .eq('doctor_id', doctor.id)
+      .maybeSingle()
+    if (!appointmentError && typeof appointment?.start_at === 'string' && !Number.isNaN(new Date(appointment.start_at).getTime())) persistedStartAt = appointment.start_at
+  }
+  const persistedLocal = persistedStartAt ? getDateTimeInTimezone(doctor.timezone, new Date(persistedStartAt)) : null
   return {
     ok: expectedBookingFailure ? false : result.ok === true,
     code,
@@ -453,5 +473,7 @@ export async function bookRetellAppointment(input: unknown) {
     appointment_id: typeof result.appointment_id === 'string' ? result.appointment_id : null,
     request_id: typeof result.request_id === 'string' ? result.request_id : null,
     status: typeof result.status === 'string' ? result.status : null,
+    local_date: persistedLocal?.date ?? null,
+    local_time: persistedLocal?.time ?? null,
   }
 }
