@@ -65,12 +65,12 @@ export function SchedulingCallStatus({ attempt, contactName, timezone }: { attem
   }[attempt.status]
 
   return (
-    <section className="rounded-xl border border-zinc-300 bg-zinc-50 p-5 sm:p-6" aria-live="polite">
+    <div className="px-5 py-5 sm:px-6 sm:py-6" aria-live="polite">
       <h2 className="font-semibold text-zinc-950">Coordinación de cita</h2>
       <div className={statusChanged ? 'scheduling-status-update' : undefined}>
         <p className="mt-3 text-sm leading-6 text-zinc-700">{presentation.message}</p>
         {presentation.timestamp ? <p className="mt-2 text-xs text-zinc-500">{presentation.timeLabel} {formatTimestamp(presentation.timestamp, timezone)}</p> : null}
       </div>
-    </section>
+    </div>
   )
 }

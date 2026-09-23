@@ -145,10 +145,10 @@ function MiniEvent({ event, highlighted, onSelect }: { event: AgendaEvent; highl
       type="button"
       onClick={() => onSelect(event)}
       aria-label={needsAppointmentAttention(event.item) ? `${event.patient}, requiere revisión` : undefined}
-      className={`w-full rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${highlighted ? 'agenda-event-update' : ''}`}
+      className={`w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-left text-[13px] text-emerald-950 shadow-sm shadow-emerald-950/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${highlighted ? 'agenda-event-update' : ''}`}
     >
       <p className="font-semibold">{event.patient}</p>
-      <p className="mt-1 font-medium">{eventTime(event)}</p>
+      <p className="mt-1 text-xs font-medium tabular-nums">{eventTime(event)}</p>
       {needsAppointmentAttention(event.item) ? <p className="mt-1 flex items-center gap-1 font-medium text-amber-800"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />Revisar</p> : null}
     </button>
   )
@@ -188,9 +188,9 @@ function WeekAgenda({ date, today, timezone, unavailability, appointments, highl
           const isToday = dateKey(day) === dateKey(today)
 
           return (
-            <div key={weekday} className="min-h-[34rem] border-r border-zinc-100 last:border-r-0">
-              <div className={`border-b border-zinc-200 px-3 py-3 ${isToday ? 'bg-zinc-900 text-white' : 'bg-zinc-50'}`}>
-                <p className="text-xs font-medium uppercase tracking-wide opacity-70">{weekday}</p>
+            <div key={weekday} className="min-h-[28rem] border-r border-zinc-100 last:border-r-0">
+              <div className={`border-b border-zinc-200 px-3 py-3 ${isToday ? 'bg-zinc-100 text-zinc-950' : 'bg-zinc-50'}`}>
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{weekday}</p>
                 <p className="mt-1 text-lg font-semibold">{day.getDate()}</p>
               </div>
               <div className="space-y-2 p-2">
@@ -318,7 +318,7 @@ export function AgendaContent({ context, unavailability, appointments }: AgendaC
         </div>
       </header>
 
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-5">
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-2">
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setSelectedDate(today)} className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">Hoy</button>
           <div className="flex items-center rounded-lg border border-zinc-300 bg-white">

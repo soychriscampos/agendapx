@@ -11,7 +11,7 @@ export function RetrySchedulingCall({ requestId }: { requestId: string }) {
   const [state, formAction, pending] = useActionState(action, initialState)
 
   return (
-    <section className="border-t border-zinc-200 pt-5">
+    <div>
       <h2 className="text-sm font-semibold text-zinc-950">Volver a intentar</h2>
       <p className="mt-2 text-sm text-zinc-600">Puedes volver a llamar al contacto para coordinar la cita.</p>
       <form action={formAction} className="mt-4">
@@ -30,6 +30,6 @@ export function RetrySchedulingCall({ requestId }: { requestId: string }) {
           {state === 'error' && 'No fue posible iniciar la llamada.'}
         </p>
       )}
-    </section>
+    </div>
   )
 }
