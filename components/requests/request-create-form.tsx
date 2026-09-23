@@ -48,9 +48,8 @@ export function RequestCreateForm({ appointmentTypes, intakeFields }: { appointm
 
   return (
     <section id="nueva-solicitud" className="max-w-2xl rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6">
-      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Prueba manual</p>
       <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-950">Nueva solicitud</h2>
-      <p className="mt-2 text-sm leading-6 text-zinc-600">Usa el teléfono para encontrar un contacto o registrar uno nuevo.</p>
+      <p className="mt-2 text-sm leading-6 text-zinc-600">Registra una solicitud manualmente usando el teléfono para encontrar un contacto o registrar uno nuevo.</p>
       <form ref={formRef} action={existing ? (newPatientMode ? newPatientAction : existingAction) : formAction} className="mt-6 space-y-6">
         <label className="block text-xs text-zinc-500">
             Teléfono

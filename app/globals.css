@@ -15,6 +15,34 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes agenda-feedback-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes agenda-event-update {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scheduling-status-update {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.agenda-inline-feedback,
+.agenda-event-update {
+  animation: agenda-feedback-in 180ms ease-out;
+}
+
+.agenda-event-update {
+  animation-name: agenda-event-update;
+}
+
+.scheduling-status-update {
+  animation: scheduling-status-update 160ms ease-out;
+}
+
 html[data-onboarding-direction='forward'] main section,
 html[data-onboarding-direction='forward'] main > section {
   animation: onboarding-step-forward 300ms ease-out;
@@ -30,6 +58,15 @@ html[data-onboarding-direction='back'] main > section {
   html[data-onboarding-direction='forward'] main > section,
   html[data-onboarding-direction='back'] main section,
   html[data-onboarding-direction='back'] main > section {
+    animation: none;
+  }
+
+  .agenda-inline-feedback,
+  .agenda-event-update {
+    animation: none;
+  }
+
+  .scheduling-status-update {
     animation: none;
   }
 }
@@ -56,7 +93,7 @@ html[data-onboarding-direction='back'] main > section {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 /* Mantiene los controles de fecha, hora y notas iguales en agenda y horarios. */

@@ -7,7 +7,7 @@ import { createAppointmentAction } from '@/app/actions'
 
 const timeInputClass = 'mt-1 block rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm'
 
-export function AppointmentCreateDialog({ doctorId, onClose }: { doctorId: string; onClose: () => void }) {
+export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doctorId: string; onComplete: (message: string) => void; onClose: () => void }) {
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const [error, setError] = useState<string>()
@@ -20,6 +20,7 @@ export function AppointmentCreateDialog({ doctorId, onClose }: { doctorId: strin
       const result = await createAppointmentAction({}, data)
       if (result.error) setError(result.error)
       else {
+        onComplete('Cita creada')
         onClose()
         formRef.current?.reset()
         router.refresh()

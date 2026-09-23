@@ -11,10 +11,10 @@ export function RetrySchedulingCall({ requestId }: { requestId: string }) {
   const [state, formAction, pending] = useActionState(action, initialState)
 
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
-      <h2 className="font-semibold text-zinc-950">Agenda</h2>
-      <p className="mt-3 text-sm text-zinc-600">Puedes volver a llamar al contacto para coordinar la cita.</p>
-      <form action={formAction} className="mt-5">
+    <section className="border-t border-zinc-200 pt-5">
+      <h2 className="text-sm font-semibold text-zinc-950">Volver a intentar</h2>
+      <p className="mt-2 text-sm text-zinc-600">Puedes volver a llamar al contacto para coordinar la cita.</p>
+      <form action={formAction} className="mt-4">
         <button
           type="submit"
           disabled={pending}

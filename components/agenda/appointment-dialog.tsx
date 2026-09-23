@@ -7,7 +7,7 @@ import { cancelAppointmentAction, openAppointmentConfirmationReminderAction, sta
 import { getDateTimeInTimezone } from '@/lib/agenda/timezone'
 import type { Appointment } from '@/lib/appointments/appointments'
 
-export function AppointmentDialog({ appointment, doctorId, timezone, onClose }: { appointment: Appointment; doctorId: string; timezone: string; onClose: () => void }) {
+export function AppointmentDialog({ appointment, doctorId, timezone, onComplete, onClose }: { appointment: Appointment; doctorId: string; timezone: string; onComplete: (message: string) => void; onClose: () => void }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string>()
@@ -22,7 +22,7 @@ export function AppointmentDialog({ appointment, doctorId, timezone, onClose }: 
     startTransition(async () => {
       const result = await updateAppointmentAction({}, formData)
       if (result.error) setError(result.error)
-      else { onClose(); router.refresh() }
+      else { onComplete('Cita reprogramada'); onClose(); router.refresh() }
     })
   }
 
@@ -33,7 +33,7 @@ export function AppointmentDialog({ appointment, doctorId, timezone, onClose }: 
     startTransition(async () => {
       const result = await cancelAppointmentAction(formData)
       if (result.error) setError(result.error)
-      else { onClose(); router.refresh() }
+      else { onComplete('Cita cancelada'); onClose(); router.refresh() }
     })
   }
 

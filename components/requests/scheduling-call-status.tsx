@@ -1,3 +1,7 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+
 import type { SchedulingCallAttempt } from '@/lib/retell/scheduling-attempts'
 
 function formatTimestamp(value: string, timezone: string) {
@@ -9,6 +13,24 @@ function formatTimestamp(value: string, timezone: string) {
 }
 
 export function SchedulingCallStatus({ attempt, contactName, timezone }: { attempt: SchedulingCallAttempt; contactName: string; timezone: string }) {
+  const [previousStatus, setPreviousStatus] = useState(attempt.status)
+  const [statusChanged, setStatusChanged] = useState(false)
+
+  useEffect(() => {
+    if (previousStatus === attempt.status) return
+    const frame = window.requestAnimationFrame(() => {
+      setPreviousStatus(attempt.status)
+      setStatusChanged(true)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [attempt.status, previousStatus])
+
+  useEffect(() => {
+    if (!statusChanged) return
+    const timeout = window.setTimeout(() => setStatusChanged(false), 160)
+    return () => window.clearTimeout(timeout)
+  }, [statusChanged])
+
   const presentation = {
     CREATING: {
       message: 'HelloPx está preparando la llamada para coordinar la cita.',
@@ -43,10 +65,12 @@ export function SchedulingCallStatus({ attempt, contactName, timezone }: { attem
   }[attempt.status]
 
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6" aria-live={attempt.status === 'CREATING' || attempt.status === 'DISPATCHED' ? 'polite' : undefined}>
+    <section className="rounded-xl border border-zinc-300 bg-zinc-50 p-5 sm:p-6" aria-live="polite">
       <h2 className="font-semibold text-zinc-950">Coordinación de cita</h2>
-      <p className="mt-3 text-sm leading-6 text-zinc-700">{presentation.message}</p>
-      {presentation.timestamp ? <p className="mt-2 text-xs text-zinc-500">{presentation.timeLabel} {formatTimestamp(presentation.timestamp, timezone)}</p> : null}
+      <div className={statusChanged ? 'scheduling-status-update' : undefined}>
+        <p className="mt-3 text-sm leading-6 text-zinc-700">{presentation.message}</p>
+        {presentation.timestamp ? <p className="mt-2 text-xs text-zinc-500">{presentation.timeLabel} {formatTimestamp(presentation.timestamp, timezone)}</p> : null}
+      </div>
     </section>
   )
 }
