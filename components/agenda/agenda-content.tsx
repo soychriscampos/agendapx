@@ -9,6 +9,7 @@ import { UnavailabilityDialog } from '@/components/agenda/unavailability-dialog'
 import { UnavailabilityPanel } from '@/components/agenda/unavailability-panel'
 import { AppointmentCreateDialog } from '@/components/agenda/appointment-create-dialog'
 import { AppointmentDialog } from '@/components/agenda/appointment-dialog'
+import { AgendaLiveRefresh } from '@/components/agenda/agenda-live-refresh'
 import type { Appointment } from '@/lib/appointments/appointments'
 
 type AgendaViewMode = 'day' | 'week' | 'month'
@@ -116,6 +117,10 @@ function eventTime(event: AgendaEvent) {
   return `${event.start}–${event.end}`
 }
 
+function needsAppointmentAttention(appointment: Appointment) {
+  return appointment.confirmationStatus === 'REMINDER_PENDING' || appointment.confirmationStatus === 'MANUAL_REQUIRED'
+}
+
 function MiniEvent({ event, onSelect }: { event: AgendaEvent; onSelect: (event: AgendaEvent) => void }) {
   if (event.kind === 'unavailability') {
     return (
@@ -130,10 +135,12 @@ function MiniEvent({ event, onSelect }: { event: AgendaEvent; onSelect: (event: 
     <button
       type="button"
       onClick={() => onSelect(event)}
+      aria-label={needsAppointmentAttention(event.item) ? `${event.patient}, requiere revisión` : undefined}
       className="w-full rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs text-emerald-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
     >
       <p className="font-semibold">{event.patient}</p>
       <p className="mt-1 font-medium">{eventTime(event)}</p>
+      {needsAppointmentAttention(event.item) ? <p className="mt-1 flex items-center gap-1 font-medium text-amber-800"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />Revisar</p> : null}
     </button>
   )
 }
@@ -217,8 +224,8 @@ function MonthAgenda({ date, timezone, unavailability, appointments, onSelectDay
                 <button type="button" onClick={() => onSelectDay(day)} className="rounded px-1 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">{day.getDate()}</button>
                 <span className="mt-2 block space-y-1">
                   {dayEvents.slice(0, 2).map((event) => (
-                    <button type="button" key={`${event.kind}-${event.id}`} onClick={() => onSelect(event)} className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${event.kind === 'unavailability' ? 'border border-dashed border-zinc-300 text-zinc-500' : 'border border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
-                      {event.kind === 'unavailability' ? event.note?.trim() || 'No disponible' : event.patient}
+                    <button type="button" key={`${event.kind}-${event.id}`} onClick={() => onSelect(event)} aria-label={event.kind === 'appointment' && needsAppointmentAttention(event.item) ? `${event.patient}, requiere revisión` : undefined} className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${event.kind === 'unavailability' ? 'border border-dashed border-zinc-300 text-zinc-500' : 'border border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                      {event.kind === 'unavailability' ? event.note?.trim() || 'No disponible' : <span className="inline-flex items-center gap-1">{needsAppointmentAttention(event.item) ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /> : null}{event.patient}</span>}
                     </button>
                   ))}
                   {dayEvents.length > 2 ? <span className="block px-1.5 text-[11px] text-zinc-400">+{dayEvents.length - 2} más</span> : null}
@@ -254,11 +261,12 @@ export function AgendaContent({ context, unavailability, appointments }: AgendaC
   const today = getDateInTimezone(context.timezone)
   const [view, setView] = useState<AgendaViewMode>('week')
   const [selectedDate, setSelectedDate] = useState(() => getDateInTimezone(context.timezone))
-  const [selectedEvent, setSelectedEvent] = useState<Appointment | null>(null)
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null)
   const [selectedUnavailability, setSelectedUnavailability] = useState<DoctorUnavailability | null>(null)
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false)
 
   const rangeLabel = useMemo(() => formatRange(selectedDate, view), [selectedDate, view])
+  const selectedAppointment = selectedAppointmentId ? appointments.find((appointment) => appointment.id === selectedAppointmentId) ?? null : null
 
   function moveDate(direction: number) {
     if (view === 'day') setSelectedDate((date) => addDays(date, direction))
@@ -272,12 +280,13 @@ export function AgendaContent({ context, unavailability, appointments }: AgendaC
   }
 
   function selectEvent(event: AgendaEvent) {
-    if (event.kind === 'appointment') setSelectedEvent(event.item)
+    if (event.kind === 'appointment') setSelectedAppointmentId(event.item.id)
     if (event.kind === 'unavailability') setSelectedUnavailability(event.item)
   }
 
   return (
     <section className="mx-auto max-w-7xl" data-doctor-id={context.doctorId}>
+      <AgendaLiveRefresh />
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div><h1 className="text-3xl font-semibold tracking-tight text-zinc-950">Agenda</h1><p className="mt-2 text-sm text-zinc-600">Organiza tu semana y revisa las citas de tus pacientes.</p></div>
         <div className="flex flex-wrap items-center gap-2">
@@ -312,7 +321,7 @@ export function AgendaContent({ context, unavailability, appointments }: AgendaC
         {view === 'month' ? <MonthAgenda date={selectedDate} timezone={context.timezone} unavailability={unavailability} appointments={appointments} onSelectDay={selectMonthDay} onSelect={selectEvent} /> : null}
       </div>
 
-      {selectedEvent ? <AppointmentDialog appointment={selectedEvent} doctorId={context.doctorId} timezone={context.timezone} onClose={() => setSelectedEvent(null)} /> : null}
+      {selectedAppointment ? <AppointmentDialog appointment={selectedAppointment} doctorId={context.doctorId} timezone={context.timezone} onClose={() => setSelectedAppointmentId(null)} /> : null}
       {newAppointmentOpen ? <AppointmentCreateDialog doctorId={context.doctorId} onClose={() => setNewAppointmentOpen(false)} /> : null}
       {selectedUnavailability ? <UnavailabilityDialog item={selectedUnavailability} doctorId={context.doctorId} timezone={context.timezone} onClose={() => setSelectedUnavailability(null)} /> : null}
     </section>

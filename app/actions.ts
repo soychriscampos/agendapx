@@ -17,6 +17,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createManualAppointmentRequest, createAppointmentRequestForExistingContact, createAppointmentRequestForNewPatient, lookupContactByPhone, type ExistingContactLookup, type RequestIntakeAnswer } from '@/lib/requests/appointment-requests'
 import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { startAppointmentConfirmationCall } from '@/lib/retell/appointment-confirmation'
+import { getAppointmentConfirmationEmailPayload, getAppointmentConfirmationReminderUrl } from '@/lib/confirmations/appointment-confirmations'
 
 export type LoginState = { error?: string }
 
@@ -486,6 +487,31 @@ export async function startAppointmentConfirmationAction(appointmentId: string):
   } catch {
     return { error: 'No fue posible iniciar la llamada de confirmación.' }
   }
+}
+
+export async function openAppointmentConfirmationReminderAction(appointmentId: string): Promise<AppointmentActionState> {
+  const user = await getCurrentUser()
+  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para enviar este recordatorio.' }
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(appointmentId)) return { error: 'La cita no es válida.' }
+
+  const supabase = await createClient()
+  const { data: appointment, error } = await supabase
+    .from('appointments')
+    .select('id, confirmation_status')
+    .eq('id', appointmentId)
+    .eq('doctor_id', user.doctor_id)
+    .maybeSingle()
+
+  if (error || !appointment || appointment.confirmation_status !== 'REMINDER_PENDING') {
+    return { error: 'Este recordatorio ya no está disponible.' }
+  }
+
+  const payload = await getAppointmentConfirmationEmailPayload(appointmentId)
+  if (!payload || payload.appointment.confirmation_status !== 'REMINDER_PENDING') {
+    return { error: 'Este recordatorio ya no está disponible.' }
+  }
+
+  redirect(getAppointmentConfirmationReminderUrl(payload.action.id))
 }
 
 export type AppointmentRequestActionState = { error?: string; success?: string; requestId?: string }
