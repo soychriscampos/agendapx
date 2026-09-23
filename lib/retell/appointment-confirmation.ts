@@ -151,7 +151,7 @@ export async function startAppointmentConfirmationCall(appointmentId: string) {
       },
       metadata: { appointment_id: claim.appointment_id!, confirmation_attempt_id: attemptId, call_mode: 'appointment_confirmation' },
       retell_llm_dynamic_variables: dynamicVariables,
-    })
+    }, { idempotencyKey: `appointment-confirmation:${attemptId}` })
     if (!nonEmpty(call.call_id)) throw new Error('Retell response did not include a call id.')
     retellCallId = call.call_id
   } catch (error) {

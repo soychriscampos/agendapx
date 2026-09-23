@@ -11,6 +11,7 @@ const noAnswerReasons = new Set<NonNullable<PhoneCallResponse['disconnection_rea
   'dial_busy',
   'user_declined',
   'voicemail_reached',
+  'ivr_reached',
 ])
 
 const interruptedReasons = new Set<NonNullable<PhoneCallResponse['disconnection_reason']>>([
