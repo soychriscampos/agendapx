@@ -43,6 +43,19 @@
   animation: scheduling-status-update 160ms ease-out;
 }
 
+.nav-link-indicator {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.nav-link-pending {
+  opacity: 0.72;
+}
+
+.nav-link-pending .nav-link-indicator {
+  opacity: 0.8;
+}
+
 .assistant-section-enter,
 .assistant-save-feedback {
   animation: assistant-section-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -87,6 +100,10 @@ html[data-onboarding-direction='back'] main > section {
 
   .scheduling-status-update {
     animation: none;
+  }
+
+  .nav-link-indicator {
+    transition: none;
   }
 
   .assistant-section-enter,
