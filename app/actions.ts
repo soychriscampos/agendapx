@@ -19,49 +19,6 @@ import { normalizePhoneToE164 } from '@/lib/phone/normalize-phone'
 import { startAppointmentConfirmationCall } from '@/lib/retell/appointment-confirmation'
 import { getAppointmentConfirmationEmailPayload, getAppointmentConfirmationReminderUrl } from '@/lib/confirmations/appointment-confirmations'
 
-export type LoginState = { error?: string }
-
-export async function login(_previousState: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get('email') ?? '').trim()
-  const password = String(formData.get('password') ?? '')
-
-  if (!email || !password) return { error: 'Escribe tu correo y contraseña.' }
-
-  const supabase = await createClient()
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error || !data.user) return { error: 'El correo o la contraseña no son correctos.' }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('users')
-    .select('role, doctor_id')
-    .eq('id', data.user.id)
-    .maybeSingle()
-
-  if (profileError || !profile) {
-    await supabase.auth.signOut()
-    return { error: 'Tu cuenta aún no tiene un perfil de HelloPx habilitado.' }
-  }
-
-  if (profile.role === 'MASTER') redirect('/master/doctors')
-  if (profile.role === 'DOCTOR' && profile.doctor_id) {
-    const { data: doctor, error: doctorError } = await supabase
-      .from('doctors')
-      .select('onboarding_completed')
-      .eq('id', profile.doctor_id)
-      .maybeSingle()
-
-    if (doctorError || !doctor) {
-      await supabase.auth.signOut()
-      return { error: 'El perfil de tu cuenta no tiene una configuración válida.' }
-    }
-
-    redirect(doctor.onboarding_completed ? '/app/agenda' : '/onboarding')
-  }
-
-  await supabase.auth.signOut()
-  return { error: 'El perfil de tu cuenta no tiene una configuración válida.' }
-}
-
 export async function logout() {
   const supabase = await createClient()
   await supabase.auth.signOut()

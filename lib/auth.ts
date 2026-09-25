@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
+import { resolveAuthenticatedDestination } from '@/lib/auth-destination'
 import { createClient } from '@/lib/supabase/server'
 
 export type UserRole = 'MASTER' | 'DOCTOR'
@@ -59,7 +60,8 @@ export async function requireRole(role: UserRole): Promise<AgendaUser> {
 
 export async function redirectAuthenticatedUser() {
   const user = await getCurrentUser()
+  if (!user) return
 
-  if (user?.role === 'MASTER') redirect('/master/doctors')
-  if (user?.role === 'DOCTOR' && user.doctor_id) redirect(user.onboarding_completed ? '/app/agenda' : '/onboarding')
+  const destination = resolveAuthenticatedDestination(user)
+  if (destination) redirect(destination)
 }

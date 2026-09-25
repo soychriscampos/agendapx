@@ -1,19 +1,77 @@
 'use client'
 
-import { useActionState } from 'react'
+import { type FormEvent, useState } from 'react'
 
-import { login, type LoginState } from '@/app/actions'
+import { isLoginDestination } from '@/lib/auth-destination'
 
-const initialState: LoginState = {}
+const profileError = 'Tu sesión no tiene un perfil de HelloPx habilitado.'
+const genericError = 'No se pudo iniciar sesión. Inténtalo de nuevo.'
+
+function responseError(payload: unknown) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return genericError
+  const error = (payload as Record<string, unknown>).error
+  return typeof error === 'string' && error ? error : genericError
+}
 
 export function LoginForm({ initialError }: { initialError?: string }) {
-  const [state, formAction, pending] = useActionState(login, initialState)
-  const error = state.error ?? (initialError === 'profile'
-    ? 'Tu sesión no tiene un perfil de HelloPx habilitado.'
-    : undefined)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | undefined>(initialError === 'profile' ? profileError : undefined)
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (pending) return
+
+    const formData = new FormData(event.currentTarget)
+    const email = String(formData.get('email') ?? '')
+    const password = String(formData.get('password') ?? '')
+    let navigationStarted = false
+
+    setPending(true)
+    setError(undefined)
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+
+      let payload: unknown
+      try {
+        payload = await response.json()
+      } catch {
+        setError(genericError)
+        return
+      }
+
+      if (!response.ok) {
+        setError(responseError(payload))
+        return
+      }
+
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        setError(genericError)
+        return
+      }
+
+      const record = payload as Record<string, unknown>
+      if (record.status !== 'success' || !isLoginDestination(record.destination)) {
+        setError(genericError)
+        return
+      }
+
+      window.location.replace(record.destination)
+      navigationStarted = true
+    } catch {
+      setError(genericError)
+    } finally {
+      if (!navigationStarted) setPending(false)
+    }
+  }
 
   return (
-    <form action={formAction} className="mt-8 space-y-5">
+    <form onSubmit={handleSubmit} className="mt-8 space-y-5">
       <div>
         <label htmlFor="email" className="mb-2 block text-sm font-medium text-zinc-700">Correo electrónico</label>
         <input id="email" name="email" type="email" autoComplete="email" required className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-950 placeholder:text-zinc-500 outline-none transition focus:border-zinc-700 focus:ring-2 focus:ring-zinc-200" />
