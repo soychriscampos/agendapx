@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HelloPx",
-  description: "Agenda médica",
+  title: "HelloPx | Asistente virtual para consultorios médicos",
+  description:
+    "HelloPx ayuda a consultorios médicos a atender llamadas, gestionar citas, disponibilidad y seguimiento administrativo mediante automatización e inteligencia artificial.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
