@@ -15,12 +15,23 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-white text-zinc-950">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900"><Image src="/logo.png" alt="" width={32} height={32} />HelloPx</Link>
-        <Link href="/login" className="-mr-3 -my-1 inline-flex items-center px-3 py-3 text-sm font-medium text-zinc-600 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-zinc-950 hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Iniciar sesión</Link>
-      </header>
+      <div className="relative isolate overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 opacity-65"
+          style={{
+            backgroundImage: 'linear-gradient(to right, rgba(39,39,42,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(39,39,42,0.04) 1px, transparent 1px), linear-gradient(to right, rgba(39,39,42,0.018) 1px, transparent 1px), linear-gradient(to bottom, rgba(39,39,42,0.018) 1px, transparent 1px)',
+            backgroundSize: '40px 40px, 40px 40px, 160px 160px, 160px 160px',
+            maskImage: 'radial-gradient(ellipse 82% 90% at 50% 0%, black 0%, black 38%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 82% 90% at 50% 0%, black 0%, black 38%, transparent 100%)',
+          }}
+        />
+        <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
+        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900"><Image src="/logo.png?v=2" alt="" width={32} height={32} />HelloPx</Link>
+        <Link href="/login" className="-mr-3 -my-1 inline-flex items-center px-3 py-3 text-sm font-medium text-[#258db0] underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-zinc-950 hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Iniciar sesión</Link>
+        </header>
 
-      <div className="mx-auto max-w-6xl px-6 lg:px-8">
+        <div className="relative z-10 mx-auto max-w-6xl px-6 lg:px-8">
         <section className="grid items-center gap-16 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.78fr)] lg:gap-24 lg:py-28">
           <div className="max-w-2xl">
             <p className="text-sm font-medium text-zinc-600">Asistente virtual para consultorios médicos</p>
@@ -47,7 +58,10 @@ export default async function Home() {
             </div>
           </div>
         </section>
+        </div>
+      </div>
 
+      <div className="mx-auto max-w-6xl px-6 lg:px-8">
         <section id="que-hace" className="grid gap-12 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-28">
           <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Menos llamadas perdidas. Menos trabajo administrativo.</h2>
           <ul className="divide-y divide-zinc-200 border-y border-zinc-200">{capabilities.map((capability, index) => <li key={capability} className="flex items-center gap-5 py-5 text-base text-zinc-700 sm:py-6"><span className="w-6 shrink-0 text-xs font-medium tabular-nums text-zinc-400">0{index + 1}</span><span>{capability}</span></li>)}</ul>
@@ -73,7 +87,7 @@ export default async function Home() {
 
         <section className="py-20 sm:py-24 lg:py-28"><div className="max-w-2xl"><h2 className="text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Conoce HelloPx</h2><p className="mt-5 text-lg leading-8 text-zinc-600">Estamos trabajando con nuestros primeros consultorios para construir una mejor forma de atender y gestionar citas.</p><a href="mailto:hellopx.app@gmail.com" className="mt-8 inline-block text-sm font-medium text-zinc-950 underline decoration-zinc-300 underline-offset-4 transition-colors hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">hellopx.app@gmail.com</a></div></section>
 
-        <footer className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-sm text-zinc-500 sm:flex-row sm:items-center sm:justify-between"><span>© HelloPx</span><div className="flex flex-wrap items-center gap-x-5 gap-y-2"><Link href="/privacy" className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Privacidad</Link><Link href="/terms" className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Términos</Link><Link href="/data-deletion" className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Eliminación de datos</Link><a className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950" href="mailto:hellopx.app@gmail.com"></a></div></footer>
+        <footer className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-sm text-zinc-500 sm:flex-row sm:items-center sm:justify-between"><span>© HelloPx</span><div className="flex flex-wrap items-center gap-x-5 gap-y-2"><Link href="/privacy" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Privacidad</Link><Link href="/terms" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Términos</Link><Link href="/data-deletion" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Eliminación de datos</Link><a className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950" href="mailto:hellopx@gmail.com"></a></div></footer>
       </div>
     </main>
   )
