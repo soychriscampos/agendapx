@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 
+import HeroCallFlow from '@/components/hero-call-flow'
 import ScrollReveal from '@/components/scroll-reveal'
 import { redirectAuthenticatedUser } from '@/lib/auth'
 
@@ -44,20 +45,7 @@ export default async function Home() {
             </div>
           </div>
 
-          <div aria-label="Vista conceptual del trabajo de HelloPx" className="relative">
-            <div className="absolute -inset-5 rounded-[2rem] bg-zinc-50" aria-hidden="true" />
-            <div className="relative rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_24px_70px_-32px_rgba(24,24,27,0.35)] sm:p-7">
-              <div className="flex items-center border-b border-zinc-200 pb-5">
-                <div><p className="text-sm font-semibold text-zinc-950">HelloPx</p><p className="mt-1 text-xs text-zinc-600">Disponible 24/7</p></div>
-              </div>
-              <div className="space-y-5 py-6">
-                <div className="rounded-xl bg-zinc-950 p-4 text-white"><p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">Llamada entrante</p><p className="mt-3 text-base leading-6">“Quiero agendar una cita”</p></div>
-                <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-[#258db0]" aria-hidden="true" /><p className="text-sm font-medium text-zinc-900">HelloPx consulta tu disponibilidad</p></div>
-                <div className="border-t border-zinc-200 pt-5"><div className="flex items-center justify-between gap-4"><p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">Horarios disponibles</p><span className="text-xs text-zinc-500">Paciente elige</span></div><div className="mt-3 flex flex-wrap gap-2"><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">09:30</span><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">11:00</span><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">16:30</span></div></div>
-                <div className="flex items-center gap-3 border-t border-zinc-200 pt-5"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-xs text-zinc-500" aria-hidden="true">✓</span><p className="text-sm font-medium text-zinc-900">Solicitud lista para agendar</p></div>
-              </div>
-            </div>
-          </div>
+          <HeroCallFlow />
         </section>
         </div>
       </div>
