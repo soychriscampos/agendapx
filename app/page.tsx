@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 
+import ScrollReveal from '@/components/scroll-reveal'
 import { redirectAuthenticatedUser } from '@/lib/auth'
 
 const capabilities = [
@@ -35,9 +36,9 @@ export default async function Home() {
         <section className="grid items-center gap-16 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.78fr)] lg:gap-24 lg:py-28">
           <div className="max-w-2xl">
             <p className="text-sm font-medium text-zinc-600">Asistente virtual para consultorios médicos</p>
-            <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-[-0.055em] text-zinc-950 sm:text-6xl sm:leading-[1.04]">Tu consultorio puede contestar incluso cuando tú no puedes.</h1>
-            <p className="mt-7 max-w-xl text-lg leading-8 text-zinc-600">HelloPx ayuda a consultorios médicos a atender llamadas, gestionar solicitudes de cita y mantener organizada su agenda mediante automatización e inteligencia artificial.</p>
-            <p className="mt-4 text-sm font-medium text-zinc-600">Disponible 24/7 · Atiende llamadas · Gestiona citas</p>
+            <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-[-0.055em] text-zinc-950 sm:text-6xl sm:leading-[1.04]">HelloPx es el asistente de citas de tu consultorio.</h1>
+            <p className="mt-7 max-w-xl text-lg leading-8 text-zinc-600">Atiende llamadas, consulta tu disponibilidad y ayuda a tus pacientes a agendar.</p>
+            <p className="mt-4 max-w-xl text-base leading-7 text-zinc-600">Úsalo para todas tus llamadas o solamente cuando tu equipo no pueda atender.</p>
             <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
               <a href="#que-hace" className="inline-flex items-center justify-center rounded-full bg-zinc-950 px-5 py-3 text-sm font-medium text-white transition-transform hover:bg-zinc-800 active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Conocer HelloPx</a>
             </div>
@@ -50,11 +51,11 @@ export default async function Home() {
                 <div><p className="text-sm font-semibold text-zinc-950">HelloPx</p><p className="mt-1 text-xs text-zinc-600">Disponible 24/7</p></div>
               </div>
               <div className="space-y-5 py-6">
-                <div className="flex gap-4"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">01</span><div><p className="text-sm font-medium text-zinc-900">Llamada entrante</p><p className="mt-1 text-sm leading-6 text-zinc-600">Paciente solicita una cita.</p></div></div>
-                <div className="flex gap-4"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">02</span><div><p className="text-sm font-medium text-zinc-900">Disponibilidad consultada</p><p className="mt-1 text-sm leading-6 text-zinc-600">Horarios disponibles encontrados.</p></div></div>
-                <div className="flex gap-4"><span className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-500">03</span><div><p className="text-sm font-medium text-zinc-900">Solicitud gestionada</p><p className="mt-1 text-sm leading-6 text-zinc-600">Lista para agendar.</p></div></div>
+                <div className="rounded-xl bg-zinc-950 p-4 text-white"><p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">Llamada entrante</p><p className="mt-3 text-base leading-6">“Quiero agendar una cita”</p></div>
+                <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full bg-[#258db0]" aria-hidden="true" /><p className="text-sm font-medium text-zinc-900">HelloPx consulta tu disponibilidad</p></div>
+                <div className="border-t border-zinc-200 pt-5"><div className="flex items-center justify-between gap-4"><p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-500">Horarios disponibles</p><span className="text-xs text-zinc-500">Paciente elige</span></div><div className="mt-3 flex flex-wrap gap-2"><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">09:30</span><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">11:00</span><span className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">16:30</span></div></div>
+                <div className="flex items-center gap-3 border-t border-zinc-200 pt-5"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-xs text-zinc-500" aria-hidden="true">✓</span><p className="text-sm font-medium text-zinc-900">Solicitud lista para agendar</p></div>
               </div>
-              <div className="border-t border-zinc-200 pt-5 text-xs text-zinc-600">Atendiendo incluso cuando el consultorio está ocupado.</div>
             </div>
           </div>
         </section>
@@ -62,30 +63,44 @@ export default async function Home() {
       </div>
 
       <div className="mx-auto max-w-6xl px-6 lg:px-8">
-        <section id="que-hace" className="grid gap-12 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-28">
-          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Menos llamadas perdidas. Menos trabajo administrativo.</h2>
-          <ul className="divide-y divide-zinc-200 border-y border-zinc-200">{capabilities.map((capability, index) => <li key={capability} className="flex items-center gap-5 py-5 text-base text-zinc-700 sm:py-6"><span className="w-6 shrink-0 text-xs font-medium tabular-nums text-zinc-400">0{index + 1}</span><span>{capability}</span></li>)}</ul>
-        </section>
+        <ScrollReveal><section id="que-hace" className="grid gap-12 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[1.2fr_0.8fr] lg:gap-24 lg:py-28">
+          <h2 className="order-1 max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight lg:order-2">Menos llamadas perdidas. Menos trabajo administrativo.</h2>
+          <ul className="order-2 divide-y divide-zinc-200 border-y border-zinc-200 lg:order-1">{capabilities.map((capability, index) => <li key={capability} className="flex items-center gap-5 py-5 text-base text-zinc-700 sm:py-6"><span className="w-6 shrink-0 text-xs font-medium tabular-nums text-zinc-400">0{index + 1}</span><span>{capability}</span></li>)}</ul>
+        </section></ScrollReveal>
 
-        <section className="grid gap-10 border-b border-zinc-200 py-16 sm:py-20 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-24">
+        <ScrollReveal><section className="grid gap-10 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-24">
+          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Menos preguntas repetitivas para ti y tu equipo</h2>
+          <div className="max-w-2xl">
+            <p className="text-lg leading-8 text-zinc-600">HelloPx también puede resolver dudas frecuentes sobre tu consultorio y tus servicios, para que tú y tu equipo no tengan que responder lo mismo una y otra vez.</p>
+            <p className="mt-5 text-lg leading-8 text-zinc-600">Puede orientar a tus pacientes sobre ubicación, horarios, tipos de cita, servicios, costos autorizados y otros detalles administrativos.</p>
+            <p className="mt-8 border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">Tú decides qué información puede comunicar.</p>
+            <ul className="mt-8 grid gap-x-8 gap-y-4 border-t border-zinc-200 pt-6 sm:grid-cols-2">
+              <li className="border-b border-zinc-200 pb-3 text-sm text-zinc-600">¿Dónde está el consultorio?</li>
+              <li className="border-b border-zinc-200 pb-3 text-sm text-zinc-600">¿Qué horarios manejan?</li>
+              <li className="border-b border-zinc-200 pb-3 text-sm text-zinc-600">¿Qué tipo de citas ofrecen?</li>
+              <li className="border-b border-zinc-200 pb-3 text-sm text-zinc-600">¿Cuánto cuesta la consulta?</li>
+            </ul>
+          </div>
+        </section></ScrollReveal>
+        <ScrollReveal><section className="grid gap-10 border-b border-zinc-200 py-16 sm:py-20 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-24">
           <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Más capacidad para tu consultorio</h2>
           <div className="max-w-2xl">
             <p className="text-lg leading-8 text-zinc-600">HelloPx puede trabajar por sí solo o junto con tu personal. Atiende llamadas y tareas repetitivas mientras tu equipo se concentra en los pacientes y situaciones que requieren atención humana.</p>
             <p className="mt-6 border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">Amplía tus horas de atención sin tener que ampliar proporcionalmente tu estructura de personal.</p>
             <div className="mt-10 grid gap-6 border-t border-zinc-200 pt-6 sm:grid-cols-3 sm:gap-4">
-              <div><p className="text-sm font-medium text-zinc-600">24/7</p><p className="mt-1 text-sm leading-6 text-zinc-600">Disponibilidad constante</p></div>
+              <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">24/7</p><p className="mt-1 text-sm leading-6 text-zinc-600">Disponibilidad constante</p></div>
               <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">Menos interrupciones</p><p className="mt-1 text-sm leading-6 text-zinc-600">Para ti y tu equipo</p></div>
               <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">Más capacidad</p><p className="mt-1 text-sm leading-6 text-zinc-600">Sin aumentar proporcionalmente la estructura</p></div>
             </div>
           </div>
-        </section>
+        </section></ScrollReveal>
 
-        <section className="grid gap-8 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-28">
-          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Un asistente que trabaja con las reglas de tu consultorio</h2>
-          <div className="max-w-2xl"><p className="text-lg leading-8 text-zinc-600">HelloPx puede configurarse con los horarios de atención, tipos de cita, preguntas que debe realizar al paciente, reglas administrativas e información del consultorio que está autorizado a proporcionar.</p><p className="mt-5 text-lg leading-8 text-zinc-600">Así puedes ampliar la capacidad de atención del consultorio sin depender de que una persona esté disponible para cada llamada.</p><p className="mt-8 border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">HelloPx apoya la operación administrativa del consultorio. No proporciona diagnósticos, recetas ni asesoramiento médico.</p></div>
-        </section>
+        <ScrollReveal><section className="grid gap-8 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[1.2fr_0.8fr] lg:gap-24 lg:py-28">
+          <h2 className="order-1 max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight lg:order-2">Un asistente que trabaja con las reglas de tu consultorio</h2>
+          <div className="order-2 max-w-2xl lg:order-1"><p className="border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">HelloPx apoya la operación administrativa del consultorio. No proporciona diagnósticos, recetas ni asesoramiento médico.</p></div>
+        </section></ScrollReveal>
 
-        <section className="py-20 sm:py-24 lg:py-28"><div className="max-w-2xl"><h2 className="text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Conoce HelloPx</h2><p className="mt-5 text-lg leading-8 text-zinc-600">Estamos trabajando con nuestros primeros consultorios para construir una mejor forma de atender y gestionar citas.</p><a href="mailto:hellopx.app@gmail.com" className="mt-8 inline-block text-sm font-medium text-zinc-950 underline decoration-zinc-300 underline-offset-4 transition-colors hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">hellopx.app@gmail.com</a></div></section>
+        <ScrollReveal><section className="py-20 sm:py-24 lg:py-28"><div className="max-w-2xl"><h2 className="text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Conoce HelloPx</h2><p className="mt-5 text-lg leading-8 text-zinc-600">Estamos trabajando con nuestros primeros consultorios para construir una mejor forma de atender y gestionar citas.</p><a href="mailto:hellopx.app@gmail.com" className="mt-8 inline-block text-sm font-medium text-zinc-950 underline decoration-zinc-300 underline-offset-4 transition-colors hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">hellopx.app@gmail.com</a></div></section></ScrollReveal>
 
         <footer className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-sm text-zinc-500 sm:flex-row sm:items-center sm:justify-between"><span>© HelloPx</span><div className="flex flex-wrap items-center gap-x-5 gap-y-2"><Link href="/privacy" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Privacidad</Link><Link href="/terms" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Términos</Link><Link href="/data-deletion" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Eliminación de datos</Link><a className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950" href="mailto:hellopx@gmail.com"></a></div></footer>
       </div>

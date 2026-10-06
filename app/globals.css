@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+.scroll-reveal {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scroll-reveal[data-reveal-ready='true'] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 650ms cubic-bezier(0.16, 1, 0.3, 1), transform 650ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scroll-reveal[data-reveal-ready='true'][data-revealed='true'] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 @keyframes onboarding-step-forward {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: translateX(0); }
@@ -86,6 +102,12 @@ html[data-onboarding-direction='back'] main > section {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
   html[data-onboarding-direction='forward'] main section,
   html[data-onboarding-direction='forward'] main > section,
   html[data-onboarding-direction='back'] main section,
