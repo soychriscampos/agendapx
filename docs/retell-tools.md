@@ -82,7 +82,7 @@ Para reutilizar un paciente existente, agregar `patient_id`; de lo contrario la 
 
 `caller_phone_number` debe ser un teléfono mexicano de exactamente 10 dígitos si se proporciona sin prefijo, o un número internacional completo en formato E.164 con `+`.
 
-`prepare_booking` no recibe ni persiste preferencias de fecha, periodo u hora. Si la solicitud requiere anticipo, la llamada outbound posterior comienza la selección de horario desde cero. Si no requiere anticipo, el agente continúa con `get_availability` y `book_appointment` usando el request creado.
+`prepare_booking` no recibe ni persiste preferencias de fecha, periodo u hora. Los campos de intake requeridos se resuelven desde la configuración activa del doctor; si falta alguno, responde `MISSING_REQUIRED_INTAKE` con los nombres que deben solicitarse y no crea una solicitud. Si la solicitud requiere anticipo, la llamada outbound posterior comienza la selección de horario desde cero. Si no requiere anticipo, el agente continúa con `get_availability` y `book_appointment` usando el request creado.
 
 ## Disponibilidad
 
@@ -93,7 +93,7 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
   --data '{
     "name":"get_availability",
     "call":{"call_id":"call_xxx","agent_id":"agent_xxx"},
-    "args":{"request_id":"00000000-0000-4000-8000-000000000002","date_from":"2026-09-15","date_to":"2026-09-22"}
+    "args":{"appointment_type_id":"00000000-0000-4000-8000-000000000000","date_from":"2026-09-15","date_to":"2026-09-22"}
   }'
 ```
 
@@ -110,7 +110,7 @@ curl -X POST "$APP_URL/api/integrations/retell/tools" \
   }'
 ```
 
-`get_availability` devuelve cada opción con `local_date`, `local_time` y `label`, ya expresados en la zona horaria del doctor. El agente sólo debe leer esas opciones y repetir exactamente `local_date` y `local_time`; nunca debe convertir UTC, calcular disponibilidad, enviar duración ni enviar `start_at`/`end_at`. HelloPx vuelve a consultar disponibilidad para esa fecha, encuentra el instante UTC correspondiente y la RPC vuelve a validar la disponibilidad. Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
+`get_availability` puede recibir `appointment_type_id` antes de preparar la solicitud, o `request_id` en el flujo existente. Nunca crea pacientes, contactos o solicitudes y devuelve como máximo tres opciones con `local_date`, `local_time` y `label`, ya expresados en la zona horaria del doctor. El agente sólo debe leer esas opciones y repetir exactamente `local_date` y `local_time`; nunca debe convertir UTC, calcular disponibilidad, enviar duración ni enviar `start_at`/`end_at`. HelloPx vuelve a consultar disponibilidad para esa fecha, encuentra el instante UTC correspondiente y la RPC vuelve a validar la disponibilidad. Si el slot deja de estar disponible, la respuesta es HTTP `409` con `code: "SLOT_UNAVAILABLE"` y `retryable: true`.
 
 Para una prueba manual local sin Retell, conserva el mismo body oficial y usa:
 

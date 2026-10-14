@@ -35,6 +35,33 @@ function isExistingAuthUserError(message: string) {
   return normalized.includes('already registered') || normalized.includes('already exists') || normalized.includes('email_exists') || normalized.includes('duplicate')
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
+}
+
+async function sendDoctorInvitationEmail(email: string, displayName: string, actionLink: string) {
+  const apiKey = process.env.RESEND_API_KEY
+  const from = process.env.RESEND_FROM_EMAIL
+  if (!apiKey || !from) throw new Error('Falta configurar RESEND_API_KEY o RESEND_FROM_EMAIL.')
+  const safeName = escapeHtml(displayName)
+  const safeLink = escapeHtml(actionLink)
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [email], subject: 'Tu invitación a HelloPx', html: `<!doctype html><html lang="es"><body style="font-family:Arial,Helvetica,sans-serif;color:#171717;line-height:1.6"><h1>Invitación a HelloPx</h1><p>Hola, ${safeName}.</p><p>Haz clic en el siguiente enlace para establecer tu contraseña y completar tu configuración:</p><p><a href="${safeLink}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#171717;color:#fff;text-decoration:none">Establecer contraseña</a></p><p>Este enlace es personal y puede expirar.</p></body></html>` }),
+    cache: 'no-store',
+  })
+  const body: unknown = await response.json().catch(() => null)
+  const responseRecord = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {}
+  if (!response.ok || typeof responseRecord.id !== 'string') throw new Error(typeof responseRecord.message === 'string' ? responseRecord.message : `Resend respondió HTTP ${response.status}.`)
+}
+
+async function findAuthUserByEmail(admin: ReturnType<typeof createAdminClient>, email: string) {
+  const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  if (error) throw new Error('No se pudo verificar la cuenta de Auth.')
+  return data.users.find((user) => user.email?.trim().toLowerCase() === email) ?? null
+}
+
 const allowedInviteTimezones = [
   'America/Tijuana',
   'America/Hermosillo',
@@ -71,6 +98,7 @@ export async function inviteDoctor(
   const admin = createAdminClient()
   let doctorId: string | null = null
   let authUserId: string | null = null
+  let authCreated = false
 
   try {
     const { data: doctor, error: doctorError } = await admin
@@ -91,6 +119,7 @@ export async function inviteDoctor(
       return { error: 'No se pudo enviar la invitación. Inténtalo de nuevo.' }
     }
     authUserId = inviteData.user.id
+    authCreated = true
 
     const { error: profileError } = await admin.from('users').insert({
       id: authUserId,
@@ -100,7 +129,7 @@ export async function inviteDoctor(
     })
 
     if (profileError) {
-      await admin.auth.admin.deleteUser(authUserId)
+      if (authCreated) await admin.auth.admin.deleteUser(authUserId)
       await admin.from('doctors').delete().eq('id', doctorId)
       return { error: 'No se pudo completar la invitación. Inténtalo de nuevo.' }
     }
@@ -108,14 +137,112 @@ export async function inviteDoctor(
     revalidatePath('/master/doctors')
     return { success: 'Invitación enviada.' }
   } catch {
-    if (authUserId) await admin.auth.admin.deleteUser(authUserId)
+    if (authUserId && authCreated) await admin.auth.admin.deleteUser(authUserId)
     if (doctorId) await admin.from('doctors').delete().eq('id', doctorId)
     return { error: 'No se pudo completar la invitación. Inténtalo de nuevo.' }
   }
 }
 
+export async function resendDoctorInvitation(
+  _previousState: InviteDoctorState,
+  formData: FormData,
+): Promise<InviteDoctorState> {
+  await requireRole('MASTER')
+  const doctorId = String(formData.get('doctor_id') ?? '').trim()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  if (!doctorId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(doctorId)) return { error: 'El doctor no es válido.' }
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { error: 'Escribe un correo válido.' }
+
+  const appUrl = process.env.APP_URL
+  if (!appUrl) return { error: 'La configuración de invitaciones no está disponible.' }
+  const redirectTo = new URL('/auth/invite', appUrl).toString()
+  const admin = createAdminClient()
+  let authUserId: string | null = null
+  let authCreated = false
+  let profileCreated = false
+
+  try {
+    const { data: doctor, error: doctorError } = await admin.from('doctors').select('id, display_name, status, onboarding_completed').eq('id', doctorId).maybeSingle()
+    if (doctorError || !doctor) return { error: 'No se encontró el doctor.' }
+    if (doctor.status !== 'ACTIVE') return { error: 'Sólo se pueden invitar doctores activos.' }
+    if (doctor.onboarding_completed) return { error: 'Este doctor ya completó su onboarding.' }
+
+    const { data: linkedUsers, error: linkedUsersError } = await admin.from('users').select('id, doctor_id, role').eq('doctor_id', doctorId)
+    if (linkedUsersError) return { error: 'No se pudo verificar el vínculo del doctor.' }
+    if (linkedUsers?.some((user) => user.role !== 'DOCTOR')) return { error: 'El doctor tiene un vínculo de usuario inválido.' }
+
+    const authUser = await findAuthUserByEmail(admin, email)
+    const linkedUser = linkedUsers?.[0] ?? null
+    if (linkedUser && linkedUser.id !== authUser?.id) return { error: 'Este doctor ya está vinculado a otro correo. Verifica el correo antes de reenviar.' }
+
+    if (authUser) {
+      authUserId = authUser.id
+      const { data: authLinks, error: authLinksError } = await admin.from('users').select('id, doctor_id, role').eq('id', authUser.id)
+      if (authLinksError) return { error: 'No se pudo verificar el vínculo de la cuenta.' }
+      if (authLinks?.some((user) => user.doctor_id !== doctorId)) return { error: 'Este correo ya está asociado a otro doctor.' }
+
+      if (!linkedUser) {
+        const { error: profileError } = await admin.from('users').insert({ id: authUser.id, doctor_id: doctorId, role: 'DOCTOR', full_name: doctor.display_name })
+        if (profileError) {
+          const { data: existingProfile } = await admin.from('users').select('doctor_id, role').eq('id', authUser.id).maybeSingle()
+          if (!existingProfile || existingProfile.doctor_id !== doctorId || existingProfile.role !== 'DOCTOR') return { error: 'No se pudo completar el vínculo del doctor sin modificar cuentas existentes.' }
+        } else {
+          profileCreated = true
+        }
+      }
+
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo } })
+      const hashedToken = linkData?.properties?.hashed_token
+      if (linkError || !hashedToken) return { error: 'No se pudo generar una nueva invitación para esta cuenta.' }
+      const confirmationUrl = new URL('/auth/confirm', appUrl)
+      confirmationUrl.searchParams.set('token_hash', hashedToken)
+      confirmationUrl.searchParams.set('type', 'recovery')
+      confirmationUrl.searchParams.set('next', '/auth/invite')
+      await sendDoctorInvitationEmail(email, doctor.display_name, confirmationUrl.toString())
+      revalidatePath('/master/doctors')
+      return { success: 'Invitación reenviada.' }
+    }
+
+    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo })
+    if (inviteError || !inviteData.user) return { error: isExistingAuthUserError(inviteError?.message ?? '') ? 'Este correo ya tiene una cuenta de Auth; verifica el vínculo antes de reenviar.' : 'No se pudo enviar la invitación. Inténtalo de nuevo.' }
+    authUserId = inviteData.user.id
+    authCreated = true
+    const { error: profileError } = await admin.from('users').insert({ id: authUserId, doctor_id: doctorId, role: 'DOCTOR', full_name: doctor.display_name })
+    if (profileError) return { error: 'No se pudo completar la invitación del doctor.' }
+    profileCreated = true
+    revalidatePath('/master/doctors')
+    return { success: 'Invitación enviada.' }
+  } catch (error) {
+    if (profileCreated && authUserId) await admin.from('users').delete().eq('id', authUserId).eq('doctor_id', doctorId)
+    if (authUserId && authCreated) await admin.auth.admin.deleteUser(authUserId)
+    console.error('[Doctor invitation] Failed.', error)
+    return { error: 'No se pudo completar el envío o provisioning de la invitación.' }
+  }
+}
+
 export type InvitePasswordState = {
   error?: string
+}
+
+export type AcceptInvitationState = {
+  error?: string
+}
+
+export async function acceptInvitation(
+  _previousState: AcceptInvitationState,
+  formData: FormData,
+): Promise<AcceptInvitationState> {
+  const tokenHash = String(formData.get('token_hash') ?? '').trim()
+  const type = String(formData.get('type') ?? '')
+  if (!tokenHash || (type !== 'invite' && type !== 'recovery')) {
+    return { error: 'Esta invitación ya no es válida. Solicita una nueva invitación.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
+  if (error) return { error: 'Esta invitación ya no es válida. Solicita una nueva invitación.' }
+
+  redirect('/auth/invite')
 }
 
 export async function setInvitePassword(

@@ -84,6 +84,7 @@ function rejectDoctorId(body: JsonRecord) {
 }
 
 function parseIntakeAnswers(value: unknown): IntakeAnswer[] {
+  if (value === undefined || value === null) return []
   if (!Array.isArray(value)) throw new RetellToolError('INVALID_REQUEST', 'intake_answers debe ser un arreglo.')
   return value.map((item) => {
     const answer = record(item)
@@ -92,6 +93,43 @@ function parseIntakeAnswers(value: unknown): IntakeAnswer[] {
     if (rawValue !== null && rawValue !== undefined && typeof rawValue !== 'string') throw new RetellToolError('INVALID_REQUEST', 'El valor de intake no es válido.')
     return { intake_field_id: intakeFieldId, value: rawValue?.trim() || null }
   })
+}
+
+async function missingRequiredIntakeFields(doctorId: string, sourceExternalId: string, answers: IntakeAnswer[], supabase: ReturnType<typeof createAdminClient>) {
+  // Preserve the RPC's idempotent replay path: an already prepared call must
+  // still return its existing request even if the caller retries with stale args.
+  const existingRequest = await supabase
+    .from('appointment_requests')
+    .select('id')
+    .eq('doctor_id', doctorId)
+    .eq('source_external_id', sourceExternalId)
+    .maybeSingle()
+  if (existingRequest.error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo validar la solicitud existente.', 503, true)
+  if (existingRequest.data) return []
+
+  const fields = await supabase
+    .from('assistant_intake_fields')
+    .select('id, label')
+    .eq('doctor_id', doctorId)
+    .eq('is_active', true)
+    .eq('is_required', true)
+    .order('sort_order')
+    .order('id')
+  if (fields.error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo validar la configuración de intake.', 503, true)
+
+  const missing = (fields.data ?? []).filter((field) => !answers.some((answer) => answer.intake_field_id === field.id && answer.value !== null))
+  return missing.map((field) => field.label || field.id)
+}
+
+function prepareBookingRpcError(error: unknown) {
+  const value = error && typeof error === 'object' ? error as { message?: unknown; details?: unknown; hint?: unknown } : {}
+  const text = [value.message, value.details, value.hint].filter((item): item is string => typeof item === 'string').join(' ')
+  if (/Required intake answers are missing/i.test(text)) {
+    return new RetellToolError('MISSING_REQUIRED_INTAKE', 'Falta información obligatoria de intake.', 400, false, 'Falta información obligatoria. Pregunta los datos marcados como requeridos y vuelve a intentarlo.')
+  }
+  if (/intake field|intake_field_id/i.test(text)) return new RetellToolError('INVALID_REQUEST', 'La información de intake no es válida.')
+  if (/Appointment type/i.test(text)) return new RetellToolError('APPOINTMENT_TYPE_NOT_AVAILABLE', 'El tipo de cita ya no está disponible.', 409)
+  return new RetellToolError('PREPARE_BOOKING_FAILED', 'No se pudo preparar la solicitud.', 500)
 }
 
 function rpcResult(value: unknown): JsonRecord {
@@ -329,18 +367,31 @@ export async function prepareRetellBooking(input: unknown) {
   }
 
   const supabase = createAdminClient()
+  const callId = requiredString(body, 'call_id')
+  const intakeAnswers = parseIntakeAnswers(body.intake_answers)
+  const missingIntake = await missingRequiredIntakeFields(doctor.id, callId, intakeAnswers, supabase)
+  if (missingIntake.length) {
+    throw new RetellToolError(
+      'MISSING_REQUIRED_INTAKE',
+      `Falta información obligatoria: ${missingIntake.join(', ')}.`,
+      400,
+      false,
+      `Falta información obligatoria: ${missingIntake.join(', ')}. Solicítala y vuelve a preparar la cita.`,
+    )
+  }
+
   const { data, error } = await supabase.rpc('prepare_booking_from_call', {
     p_doctor_id: doctor.id,
-    p_source_external_id: requiredString(body, 'call_id'),
+    p_source_external_id: callId,
     p_contact_name: requiredString(body, 'contact_name'),
     p_phone_e164: phoneE164,
     p_patient_name: requiredString(body, 'patient_name'),
     p_relationship: relationship,
     p_appointment_type_id: requiredUuid(body, 'appointment_type_id'),
     p_patient_id: optionalUuid(body, 'patient_id') ?? null,
-    p_intake_answers: parseIntakeAnswers(body.intake_answers),
+    p_intake_answers: intakeAnswers,
   })
-  if (error) throw new RetellToolError('PREPARE_BOOKING_FAILED', 'No se pudo preparar la solicitud.', 500)
+  if (error) throw prepareBookingRpcError(error)
 
   const result = rpcResult(data)
   const requiresDeposit = result.requires_deposit === true
@@ -389,33 +440,50 @@ export async function getRetellAvailability(input: unknown) {
   const body = record(input)
   rejectDoctorId(body)
   const doctor = await resolveRetellDoctor(requiredString(body, 'agent_id'), optionalString(body, 'phone_number'))
-  const requestId = requiredUuid(body, 'request_id')
-  console.warn('[Retell] get_availability request_id:', requestId)
-  const request = await assertRequestBelongsToDoctor(doctor.id, requestId)
-  if (!request.appointment_type_id) throw new RetellToolError('APPOINTMENT_TYPE_REQUIRED', 'La solicitud no tiene tipo de cita.', 409)
-
   const supabase = createAdminClient()
+  const requestId = optionalUuid(body, 'request_id')
+  const appointmentTypeId = optionalUuid(body, 'appointment_type_id')
+  if (requestId && appointmentTypeId) throw new RetellToolError('INVALID_REQUEST', 'Usa request_id o appointment_type_id, no ambos.')
+
+  let resolvedAppointmentTypeId = appointmentTypeId
+  if (requestId) {
+    console.warn('[Retell] get_availability request_id:', requestId)
+    const request = await assertRequestBelongsToDoctor(doctor.id, requestId)
+    if (!request.appointment_type_id) throw new RetellToolError('APPOINTMENT_TYPE_REQUIRED', 'La solicitud no tiene tipo de cita.', 409)
+    resolvedAppointmentTypeId = request.appointment_type_id
+  }
+  if (!resolvedAppointmentTypeId) throw new RetellToolError('INVALID_REQUEST', 'Se requiere request_id o appointment_type_id.')
+
   const { data: appointmentType, error } = await supabase
     .from('appointment_types')
     .select('duration_minutes')
-    .eq('id', request.appointment_type_id)
+    .eq('id', resolvedAppointmentTypeId)
     .eq('doctor_id', doctor.id)
     .eq('is_active', true)
     .maybeSingle()
   if (error) throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo cargar el tipo de cita.', 503, true)
   if (!appointmentType) throw new RetellToolError('APPOINTMENT_TYPE_NOT_AVAILABLE', 'El tipo de cita ya no está disponible.', 409)
 
-  const slots = await getAvailableSlots({
-    doctorId: doctor.id,
-    dateFrom: requiredDate(body, 'date_from'),
-    dateTo: requiredDate(body, 'date_to'),
-    durationMinutes: appointmentType.duration_minutes,
-  }, supabase)
+  let slots
+  try {
+    slots = await getAvailableSlots({
+      doctorId: doctor.id,
+      dateFrom: requiredDate(body, 'date_from'),
+      dateTo: requiredDate(body, 'date_to'),
+      durationMinutes: appointmentType.duration_minutes,
+    }, supabase)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (/^(dateFrom|dateTo|El rango|La duración|El intervalo)/i.test(message)) throw new RetellToolError('INVALID_REQUEST', message)
+    throw new RetellToolError('INTEGRATION_UNAVAILABLE', 'No se pudo consultar la disponibilidad.', 503, true)
+  }
 
   return {
     ok: true,
     timezone: slots.timezone,
-    slots: slots.slots.map((slot) => ({
+    // Keep the informational response concise; booking still revalidates the
+    // selected local date/time against the authoritative RPC.
+    slots: slots.slots.slice(0, 3).map((slot) => ({
       ...localSlotPresentation(slot.start, slots.timezone),
     })),
   }

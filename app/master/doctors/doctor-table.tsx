@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react'
 
-import { updateDoctor, type UpdateDoctorState } from '@/app/actions'
+import { resendDoctorInvitation, updateDoctor, type InviteDoctorState, type UpdateDoctorState } from '@/app/actions'
 
 type Doctor = {
   id: string
@@ -56,6 +56,25 @@ function DoctorEditor({ doctor }: { doctor: Doctor }) {
   )
 }
 
+function DoctorInvitation({ doctor }: { doctor: Doctor }) {
+  const [open, setOpen] = useState(false)
+  const [state, formAction, pending] = useActionState(resendDoctorInvitation, {} as InviteDoctorState)
+
+  return <>
+    <button type="button" onClick={() => setOpen(true)} className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50">Reenviar acceso</button>
+    {open ? <div className="fixed inset-0 z-20 flex items-center justify-center bg-zinc-950/30 p-4" role="dialog" aria-modal="true" aria-labelledby={'invite-doctor-' + doctor.id}>
+      <form action={formAction} className="w-full max-w-md rounded-xl border border-zinc-200 bg-white p-5 text-left shadow-xl">
+        <input type="hidden" name="doctor_id" value={doctor.id} />
+        <p id={'invite-doctor-' + doctor.id} className="text-sm font-semibold text-zinc-900">Reenviar acceso a {doctor.display_name}</p>
+        <label className="mt-4 block text-xs font-medium text-zinc-600">Correo<input name="email" type="email" autoComplete="email" className="mt-1 w-full rounded-md border border-zinc-300 px-2.5 py-2 text-sm" required /></label>
+        {state.error ? <p className="mt-3 text-xs text-red-700" role="alert">{state.error}</p> : null}
+        {state.success ? <p className="mt-3 text-xs text-emerald-700" role="status">{state.success}</p> : null}
+        <div className="mt-5 flex gap-2"><button type="button" onClick={() => setOpen(false)} className="w-1/3 rounded-md border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-700">Cancelar</button><button type="submit" disabled={pending} className="w-2/3 rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{pending ? 'Enviando…' : 'Enviar invitación'}</button></div>
+      </form>
+    </div> : null}
+  </>
+}
+
 export function DoctorTable({ doctors }: { doctors: Doctor[] }) {
   if (!doctors.length) return <p className="px-6 py-10 text-center text-sm text-zinc-500">No hay doctores registrados.</p>
 
@@ -67,7 +86,7 @@ export function DoctorTable({ doctors }: { doctors: Doctor[] }) {
         </tr></thead>
         <tbody className="divide-y divide-zinc-100">{doctors.map((doctor) => (
           <tr key={doctor.id} className="align-middle text-zinc-700">
-            <td className="whitespace-nowrap px-4 py-4 font-medium text-zinc-950">{doctor.display_name}</td><td className="px-4 py-4">{valueOrDash(doctor.phone)}</td><td className="px-4 py-4">{valueOrDash(doctor.whatsapp)}</td><td className="px-4 py-4"><span className={doctor.status === 'ACTIVE' ? 'text-emerald-700' : 'text-zinc-500'}>{doctor.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</span></td><td className="px-4 py-4 font-mono text-xs">{doctor.timezone}</td><td className="px-4 py-4 font-mono text-xs">{valueOrDash(doctor.retell_agent_id)}</td><td className="px-4 py-4 font-mono text-xs">{valueOrDash(doctor.twilio_phone_number)}</td><td className="px-4 py-4"><div className="flex items-center gap-2"><a href={'/master/doctors/' + doctor.id + '/agenda'} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700">Entrar</a><DoctorEditor doctor={doctor} /></div></td>
+            <td className="whitespace-nowrap px-4 py-4 font-medium text-zinc-950">{doctor.display_name}</td><td className="px-4 py-4">{valueOrDash(doctor.phone)}</td><td className="px-4 py-4">{valueOrDash(doctor.whatsapp)}</td><td className="px-4 py-4"><span className={doctor.status === 'ACTIVE' ? 'text-emerald-700' : 'text-zinc-500'}>{doctor.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}</span></td><td className="px-4 py-4 font-mono text-xs">{doctor.timezone}</td><td className="px-4 py-4 font-mono text-xs">{valueOrDash(doctor.retell_agent_id)}</td><td className="px-4 py-4 font-mono text-xs">{valueOrDash(doctor.twilio_phone_number)}</td><td className="px-4 py-4"><div className="flex items-center gap-2"><a href={'/master/doctors/' + doctor.id + '/agenda'} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700">Entrar</a><DoctorInvitation doctor={doctor} /><DoctorEditor doctor={doctor} /></div></td>
           </tr>
         ))}</tbody>
       </table>
