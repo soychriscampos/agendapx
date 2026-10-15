@@ -7,11 +7,19 @@ import { createAppointmentAction, lookupManualAppointmentPhoneAction, searchManu
 import type { ManualAppointmentPatientOption } from '@/lib/appointments/appointments'
 
 const timeInputClass = 'mt-1 block rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm'
-const inputClass = 'mt-1 block w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm'
+const inputClass = 'mt-1 block w-full rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-500'
 const relationships = [
   ['SELF', 'Paciente'], ['MOTHER', 'Madre'], ['FATHER', 'Padre'], ['CHILD', 'Hijo/a'],
   ['PARTNER', 'Pareja'], ['RELATIVE', 'Familiar'], ['OTHER', 'Otra relación'],
 ]
+
+function formatPatientPhone(phoneE164: string) {
+  const digits = phoneE164.replace(/\D/g, '')
+  const nationalNumber = digits.length >= 10 ? digits.slice(-10) : digits
+  return nationalNumber.length === 10
+    ? `${nationalNumber.slice(0, 3)} ${nationalNumber.slice(3, 6)} ${nationalNumber.slice(6)}`
+    : phoneE164
+}
 
 export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doctorId: string; onComplete: (message: string) => void; onClose: () => void }) {
   const router = useRouter()
@@ -170,36 +178,39 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
 
           {confirmation ? <div className="space-y-4 rounded-lg bg-zinc-50 p-4">
             <fieldset className="space-y-2">
-              <legend className="text-xs font-medium text-zinc-600">Paciente</legend>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'NEW'} onChange={() => { setPatientMode('NEW'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Registrar paciente nuevo</label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'EXISTING'} onChange={() => { setPatientMode('EXISTING'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Elegir paciente existente</label>
+              <legend className="text-xs font-medium text-zinc-800">Paciente</legend>
+              <label className="flex items-center gap-2 text-sm text-zinc-800"><input type="radio" checked={patientMode === 'NEW'} onChange={() => { setPatientMode('NEW'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Registrar paciente nuevo</label>
+              <label className="flex items-center gap-2 text-sm text-zinc-800"><input type="radio" checked={patientMode === 'EXISTING'} onChange={() => { setPatientMode('EXISTING'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Elegir paciente existente</label>
             </fieldset>
 
             {patientMode === 'EXISTING' ? <div className="space-y-3">
               {!selectedPatient ? <>
-                <label className="block text-xs text-zinc-500">Buscar paciente<input value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); searchPatients() } }} className={inputClass} placeholder="Escribe al menos dos letras" /></label>
-                <button type="button" onClick={searchPatients} disabled={lookupPending || patientQuery.trim().length < 2} className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50">{lookupPending ? 'Buscando…' : 'Buscar paciente'}</button>
-                {patients.length ? <ul className="max-h-36 divide-y divide-zinc-200 overflow-y-auto rounded-md border border-zinc-200 bg-white">{patients.map((patient) => <li key={patient.id}><button type="button" onClick={() => selectPatient(patient)} className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50">{patient.fullName}</button></li>)}</ul> : null}
-              </> : <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm"><span>{selectedPatient.fullName}</span><button type="button" onClick={() => { setSelectedPatient(null); setPatientName(''); setPhone(''); resetPhoneResult() }} className="text-zinc-500 underline">Cambiar</button></div>}
-              {selectedPatient?.contacts.some((contact) => contact.phones.length) ? <label className="block text-xs text-zinc-500">Teléfono de contacto relacionado<select defaultValue="" onChange={(event) => { if (event.target.value) selectExistingPhone(event.target.value) }} className={inputClass}><option value="">Elige un teléfono o escribe otro</option>{selectedPatient.contacts.flatMap((contact) => contact.phones.map((item) => <option key={item.id} value={item.phoneE164}>{contact.contactName} · {contact.relationship} · {item.phoneE164}</option>))}</select></label> : null}
+                <label className="block text-xs text-zinc-700">Buscar paciente<input value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); searchPatients() } }} className={inputClass} placeholder="Escribe al menos dos letras" /></label>
+                <button type="button" onClick={searchPatients} disabled={lookupPending || patientQuery.trim().length < 2} className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-800 disabled:opacity-70">{lookupPending ? 'Buscando…' : 'Buscar paciente'}</button>
+                {patients.length ? <ul className="max-h-36 divide-y divide-zinc-200 overflow-y-auto rounded-md border border-zinc-200 bg-white">{patients.map((patient) => {
+                  const patientPhones = [...new Set(patient.contacts.flatMap((contact) => contact.phones.map((item) => item.phoneE164)))].map(formatPatientPhone)
+                  return <li key={patient.id}><button type="button" onClick={() => selectPatient(patient)} className="w-full break-words px-3 py-2 text-left text-sm text-zinc-900 hover:bg-zinc-50"><span className="font-medium">{patient.fullName}</span>{patientPhones.length ? <span className="font-normal text-zinc-500"> · {patientPhones.join(' / ')}</span> : null}</button></li>
+                })}</ul> : null}
+              </> : <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"><span>{selectedPatient.fullName}</span><button type="button" onClick={() => { setSelectedPatient(null); setPatientName(''); setPhone(''); resetPhoneResult() }} className="text-zinc-700 underline">Cambiar</button></div>}
+              {selectedPatient?.contacts.some((contact) => contact.phones.length) ? <label className="block text-xs text-zinc-700">Teléfono de contacto relacionado<select defaultValue="" onChange={(event) => { if (event.target.value) selectExistingPhone(event.target.value) }} className={inputClass}><option value="">Elige un teléfono o escribe otro</option>{selectedPatient.contacts.flatMap((contact) => contact.phones.map((item) => <option key={item.id} value={item.phoneE164}>{contact.contactName} · {contact.relationship} · {item.phoneE164}</option>))}</select></label> : null}
             </div> : null}
 
             {patientReady ? <>
-              <label className="block text-xs text-zinc-500">Teléfono para la confirmación<input type="tel" inputMode="tel" value={phone} onChange={(event) => { setPhone(event.target.value); resetPhoneResult() }} className={inputClass} placeholder="669 123 4567" required /></label>
+              <label className="block text-xs text-zinc-700">Teléfono para la confirmación<input type="tel" inputMode="tel" value={phone} onChange={(event) => { setPhone(event.target.value); resetPhoneResult() }} className={inputClass} placeholder="669 123 4567" required /></label>
               <button type="button" onClick={lookupPhone} disabled={lookupPending || !phone.trim()} className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50">{lookupPending ? 'Buscando…' : 'Verificar teléfono'}</button>
             </> : null}
 
             {phoneChecked && phoneMatch ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm"><p className="font-medium text-emerald-950">Se reutilizará el contacto {phoneMatch.contactName} y su teléfono.</p>{matchingPatientRelation ? <p className="mt-1 text-xs text-emerald-900">Ya está relacionado con este paciente como {relationships.find(([key]) => key === relationship)?.[1] ?? relationship}.</p> : <p className="mt-1 text-xs text-emerald-900">El contacto aún no está relacionado con este paciente. Indica la relación para crearla.</p>}</div> : null}
 
             {phoneChecked && !phoneMatch ? <fieldset className="space-y-2 rounded-md border border-zinc-200 bg-white p-3">
-              <legend className="px-1 text-xs font-medium text-zinc-600">¿A quién pertenece este teléfono?</legend>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="phone_owner_choice" value="PATIENT" required checked={phoneOwner === 'PATIENT'} onChange={() => { setPhoneOwner('PATIENT'); setContactName(''); setRelationship('SELF') }} />Al paciente</label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" name="phone_owner_choice" value="OTHER" required checked={phoneOwner === 'OTHER'} onChange={() => { setPhoneOwner('OTHER'); setRelationship('') }} />A otra persona</label>
+              <legend className="px-1 text-xs font-medium text-zinc-800">¿A quién pertenece este teléfono?</legend>
+              <label className="flex items-center gap-2 text-sm text-zinc-800"><input type="radio" name="phone_owner_choice" value="PATIENT" required checked={phoneOwner === 'PATIENT'} onChange={() => { setPhoneOwner('PATIENT'); setContactName(''); setRelationship('SELF') }} />Al paciente</label>
+              <label className="flex items-center gap-2 text-sm text-zinc-800"><input type="radio" name="phone_owner_choice" value="OTHER" required checked={phoneOwner === 'OTHER'} onChange={() => { setPhoneOwner('OTHER'); setRelationship('') }} />A otra persona</label>
               {phoneOwner === 'PATIENT' ? <p className="text-xs text-zinc-500">Se registrará el contacto como el paciente (SELF).</p> : null}
-              {phoneOwner === 'OTHER' ? <label className="block text-xs text-zinc-500">Nombre del contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} className={inputClass} required /></label> : null}
+              {phoneOwner === 'OTHER' ? <label className="block text-xs text-zinc-700">Nombre del contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} className={inputClass} required /></label> : null}
             </fieldset> : null}
 
-            {patientReady && (needsRelationship || (phoneChecked && !phoneMatch && phoneOwner === 'OTHER')) ? <label className="block text-xs text-zinc-500">Relación del contacto con el paciente<select value={relationship} onChange={(event) => setRelationship(event.target.value)} className={inputClass} required><option value="">Selecciona una relación</option>{relationships.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label> : null}
+            {patientReady && (needsRelationship || (phoneChecked && !phoneMatch && phoneOwner === 'OTHER')) ? <label className="block text-xs text-zinc-700">Relación del contacto con el paciente<select value={relationship} onChange={(event) => setRelationship(event.target.value)} className={inputClass} required><option value="">Selecciona una relación</option>{relationships.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label> : null}
           </div> : null}
         </div>
         {error ? <p className="mt-3 text-sm text-red-700" role="alert">{error}</p> : null}
