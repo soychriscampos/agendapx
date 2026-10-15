@@ -59,7 +59,7 @@ function appointmentDateForVoice(claim: ConfirmationClaim) {
 }
 
 function confirmationBeginMessage(variables: Record<string, string>, claim: ConfirmationClaim) {
-  return `Hola, hablo del consultorio del Dr. ${variables.doctor_name}. Llamo para confirmar la asistencia de ${claim.patient_name} a su cita del ${appointmentDateForVoice(claim)} a las ${formatTimeForVoice(claim.local_time ?? '')}.`
+  return `Hola, hablo de parte del Dr. ${variables.doctor_name}. Llamo para confirmar la asistencia de ${claim.patient_name} a su cita del ${appointmentDateForVoice(claim)} a las ${formatTimeForVoice(claim.local_time ?? '')}. ¿Podemos confirmar su asistencia?`
 }
 
 function isDefiniteRejection(error: unknown) {
