@@ -39,7 +39,7 @@ export function AppointmentDialog({ appointment, doctorId, timezone, onComplete,
 
   function startConfirmation() {
     startTransition(async () => {
-      const result = await startAppointmentConfirmationAction(appointment.id)
+      const result = await startAppointmentConfirmationAction(appointment.id, doctorId)
       if (result.error) setError(result.error)
       else { setError(result.success); router.refresh() }
     })

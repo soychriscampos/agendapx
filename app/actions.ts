@@ -555,10 +555,31 @@ export async function cancelAppointmentAction(formData: FormData): Promise<Appoi
   return { success: 'Cita cancelada.' }
 }
 
-export async function startAppointmentConfirmationAction(appointmentId: string): Promise<AppointmentActionState> {
+export async function startAppointmentConfirmationAction(appointmentId: string, selectedDoctorId: string): Promise<AppointmentActionState> {
   const user = await getCurrentUser()
-  if (!user || user.role !== 'DOCTOR' || !user.doctor_id) return { error: 'No tienes permiso para iniciar una confirmación.' }
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para iniciar una confirmación.' }
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(appointmentId)) return { error: 'La cita no es válida.' }
+  const targetDoctorId = user.role === 'DOCTOR' ? user.doctor_id : selectedDoctorId?.trim()
+  if (!targetDoctorId) return { error: 'No tienes permiso para iniciar una confirmación.' }
+
+  const supabase = await createClient()
+  const { data: doctor, error: doctorError } = await supabase
+    .from('doctors')
+    .select('id')
+    .eq('id', targetDoctorId)
+    .maybeSingle()
+  if (doctorError) return { error: 'No se pudo validar el doctor seleccionado.' }
+  if (!doctor) return { error: 'El doctor seleccionado no existe.' }
+
+  const { data: appointment, error: appointmentError } = await supabase
+    .from('appointments')
+    .select('id')
+    .eq('id', appointmentId)
+    .eq('doctor_id', doctor.id)
+    .maybeSingle()
+  if (appointmentError) return { error: 'No se pudo validar la cita seleccionada.' }
+  if (!appointment) return { error: 'La cita no corresponde al doctor seleccionado.' }
+
   try {
     const result = await startAppointmentConfirmationCall(appointmentId)
     if (!result.ok) {
@@ -567,6 +588,7 @@ export async function startAppointmentConfirmationAction(appointmentId: string):
       return { error: 'No fue posible iniciar la llamada de confirmación.' }
     }
     revalidatePath('/app/agenda')
+    revalidatePath(`/master/doctors/${doctor.id}/agenda`)
     return { success: result.idempotent ? 'Ya hay una confirmación en curso.' : 'Llamada de confirmación iniciada.' }
   } catch {
     return { error: 'No fue posible iniciar la llamada de confirmación.' }
