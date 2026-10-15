@@ -17,6 +17,7 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const manualCreationKey = useRef<string | null>(null)
+  const phoneLookupVersion = useRef(0)
   const [error, setError] = useState<string>()
   const [pending, startTransition] = useTransition()
   const [confirmation, setConfirmation] = useState(false)
@@ -54,6 +55,7 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
   }
 
   function resetPhoneResult() {
+    phoneLookupVersion.current += 1
     setPhoneMatch(undefined)
     setPhoneChecked(false)
     setPhoneOwner('')
@@ -79,10 +81,13 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
   }
 
   function selectExistingPhone(phoneE164: string) {
+    if (patientMode === 'EXISTING' && !selectedPatient) return
     setPhone(phoneE164)
     resetPhoneResult()
+    const lookupVersion = phoneLookupVersion.current
     startLookup(async () => {
       const result = await lookupManualAppointmentPhoneAction(doctorId, phoneE164)
+      if (lookupVersion !== phoneLookupVersion.current) return
       if (result.error) setError(result.error)
       else {
         setPhoneMatch(result.phone)
@@ -96,10 +101,20 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
   }
 
   function lookupPhone() {
+    if (patientMode === 'EXISTING' && !selectedPatient) {
+      setError('Selecciona un paciente antes de verificar el teléfono.')
+      return
+    }
+    if (patientMode === 'NEW' && !patientName.trim()) {
+      setError('Escribe el nombre del paciente antes de verificar el teléfono.')
+      return
+    }
     if (!phone.trim()) { setError('Escribe un teléfono para buscarlo.'); return }
     setError(undefined)
+    const lookupVersion = phoneLookupVersion.current
     startLookup(async () => {
       const result = await lookupManualAppointmentPhoneAction(doctorId, phone)
+      if (lookupVersion !== phoneLookupVersion.current) return
       if (result.error) setError(result.error)
       else {
         setPhoneMatch(result.phone)
@@ -113,8 +128,9 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
     })
   }
 
+  const patientReady = patientMode === 'EXISTING' ? selectedPatient !== null : patientName.trim().length > 0
   const matchingPatientRelation = !!(phoneMatch && selectedPatient?.id && phoneMatch.relations.some((relation) => relation.patient_id === selectedPatient.id))
-  const needsRelationship = confirmation && phoneChecked && !!phoneMatch && (patientMode === 'NEW' || !matchingPatientRelation)
+  const needsRelationship = confirmation && patientReady && phoneChecked && !!phoneMatch && (patientMode === 'NEW' || !matchingPatientRelation)
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-zinc-950/30 p-4" role="presentation" onClick={onClose}>
@@ -135,7 +151,7 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
         <input type="hidden" name="relationship" value={relationship} />
 
         <div className="mt-5 space-y-3">
-          {!confirmation || patientMode === 'NEW' ? <label className="block text-xs text-zinc-500">Nombre del paciente<input value={patientName} onChange={(event) => setPatientName(event.target.value)} className={inputClass} required /></label> : null}
+          {!confirmation || patientMode === 'NEW' ? <label className="block text-xs text-zinc-500">Nombre del paciente<input value={patientName} onChange={(event) => { setPatientName(event.target.value); if (confirmation) resetPhoneResult() }} className={inputClass} required /></label> : null}
           <label className="block text-xs text-zinc-500">Fecha<input type="date" name="date" className={inputClass} required /></label>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-zinc-500">Desde<input type="time" name="start" defaultValue="09:00" className={timeInputClass} required /></label>
@@ -155,8 +171,8 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
           {confirmation ? <div className="space-y-4 rounded-lg bg-zinc-50 p-4">
             <fieldset className="space-y-2">
               <legend className="text-xs font-medium text-zinc-600">Paciente</legend>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'NEW'} onChange={() => { setPatientMode('NEW'); setSelectedPatient(null); setPatientName(''); setPhone(''); resetPhoneResult() }} />Registrar paciente nuevo</label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'EXISTING'} onChange={() => { setPatientMode('EXISTING'); setPatientName(''); setPhone(''); resetPhoneResult() }} />Elegir paciente existente</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'NEW'} onChange={() => { setPatientMode('NEW'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Registrar paciente nuevo</label>
+              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={patientMode === 'EXISTING'} onChange={() => { setPatientMode('EXISTING'); setSelectedPatient(null); setPatientName(''); setPatients([]); setPatientQuery(''); setPhone(''); resetPhoneResult() }} />Elegir paciente existente</label>
             </fieldset>
 
             {patientMode === 'EXISTING' ? <div className="space-y-3">
@@ -168,8 +184,10 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
               {selectedPatient?.contacts.some((contact) => contact.phones.length) ? <label className="block text-xs text-zinc-500">Teléfono de contacto relacionado<select defaultValue="" onChange={(event) => { if (event.target.value) selectExistingPhone(event.target.value) }} className={inputClass}><option value="">Elige un teléfono o escribe otro</option>{selectedPatient.contacts.flatMap((contact) => contact.phones.map((item) => <option key={item.id} value={item.phoneE164}>{contact.contactName} · {contact.relationship} · {item.phoneE164}</option>))}</select></label> : null}
             </div> : null}
 
-            <label className="block text-xs text-zinc-500">Teléfono para la confirmación<input type="tel" inputMode="tel" value={phone} onChange={(event) => { setPhone(event.target.value); resetPhoneResult() }} className={inputClass} placeholder="669 123 4567" required /></label>
-            <button type="button" onClick={lookupPhone} disabled={lookupPending || !phone.trim()} className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50">{lookupPending ? 'Buscando…' : 'Verificar teléfono'}</button>
+            {patientReady ? <>
+              <label className="block text-xs text-zinc-500">Teléfono para la confirmación<input type="tel" inputMode="tel" value={phone} onChange={(event) => { setPhone(event.target.value); resetPhoneResult() }} className={inputClass} placeholder="669 123 4567" required /></label>
+              <button type="button" onClick={lookupPhone} disabled={lookupPending || !phone.trim()} className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50">{lookupPending ? 'Buscando…' : 'Verificar teléfono'}</button>
+            </> : null}
 
             {phoneChecked && phoneMatch ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm"><p className="font-medium text-emerald-950">Se reutilizará el contacto {phoneMatch.contactName} y su teléfono.</p>{matchingPatientRelation ? <p className="mt-1 text-xs text-emerald-900">Ya está relacionado con este paciente como {relationships.find(([key]) => key === relationship)?.[1] ?? relationship}.</p> : <p className="mt-1 text-xs text-emerald-900">El contacto aún no está relacionado con este paciente. Indica la relación para crearla.</p>}</div> : null}
 
@@ -181,11 +199,11 @@ export function AppointmentCreateDialog({ doctorId, onComplete, onClose }: { doc
               {phoneOwner === 'OTHER' ? <label className="block text-xs text-zinc-500">Nombre del contacto<input value={contactName} onChange={(event) => setContactName(event.target.value)} className={inputClass} required /></label> : null}
             </fieldset> : null}
 
-            {needsRelationship || (phoneChecked && !phoneMatch && phoneOwner === 'OTHER') ? <label className="block text-xs text-zinc-500">Relación del contacto con el paciente<select value={relationship} onChange={(event) => setRelationship(event.target.value)} className={inputClass} required><option value="">Selecciona una relación</option>{relationships.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label> : null}
+            {patientReady && (needsRelationship || (phoneChecked && !phoneMatch && phoneOwner === 'OTHER')) ? <label className="block text-xs text-zinc-500">Relación del contacto con el paciente<select value={relationship} onChange={(event) => setRelationship(event.target.value)} className={inputClass} required><option value="">Selecciona una relación</option>{relationships.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label> : null}
           </div> : null}
         </div>
         {error ? <p className="mt-3 text-sm text-red-700" role="alert">{error}</p> : null}
-        <button type="submit" disabled={pending || (confirmation && (!phoneChecked || (patientMode === 'EXISTING' && !selectedPatient)))} className="mt-5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{pending ? 'Guardando…' : 'Crear cita'}</button>
+        <button type="submit" disabled={pending || (confirmation && (!patientReady || !phoneChecked))} className="mt-5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{pending ? 'Guardando…' : 'Crear cita'}</button>
       </form>
     </div>
   )
