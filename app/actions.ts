@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { getCurrentUser, requireRole } from '@/lib/auth'
 import { createDoctorUnavailability, deleteDoctorUnavailability, updateDoctorUnavailability, type UnavailabilityMutationResult } from '@/lib/unavailability/doctor-unavailability'
 import type { AppointmentConflict } from '@/lib/appointments/appointments'
-import { cancelAppointment, createAppointment, updateAppointment, type AppointmentInput } from '@/lib/appointments/appointments'
+import { cancelAppointment, createManualAppointment, findManualAppointmentPhone, searchManualAppointmentPatients, updateAppointment, type AppointmentInput, type ManualAppointmentPatientOption } from '@/lib/appointments/appointments'
 import {
   replaceDoctorRecurringUnavailability,
   replaceDoctorSchedule,
@@ -528,11 +528,78 @@ function appointmentInput(formData: FormData): AppointmentInput {
 export async function createAppointmentAction(_previousState: AppointmentActionState, formData: FormData): Promise<AppointmentActionState> {
   const user = await getCurrentUser()
   if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para modificar la agenda.' }
-  try { await createAppointment(user, String(formData.get('doctor_id') ?? ''), appointmentInput(formData)) }
-  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la cita.' } }
   const doctorId = String(formData.get('doctor_id') ?? '')
+  const wantsConfirmation = String(formData.get('manual_confirmation_requested') ?? '') === 'true'
+  const manualCreationKey = String(formData.get('manual_creation_key') ?? '')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(manualCreationKey)) return { error: 'No se pudo validar la creación. Cierra y vuelve a abrir el formulario.' }
+  try {
+    const input = appointmentInput(formData)
+    if (!wantsConfirmation) {
+      await createManualAppointment(user, doctorId, input, { requested: false }, manualCreationKey)
+    } else {
+      const phoneE164 = normalizePhoneToE164(String(formData.get('phone_e164') ?? ''))
+      const patientMode = String(formData.get('patient_mode') ?? '')
+      const phoneOwner = String(formData.get('phone_owner') ?? '')
+      const relationship = String(formData.get('relationship') ?? '')
+      const contactName = String(formData.get('contact_name') ?? '').trim()
+      if (patientMode === 'EXISTING') {
+        const patientId = String(formData.get('patient_id') ?? '')
+        if (!patientId) throw new Error('Selecciona un paciente existente.')
+        const phoneMatch = await findManualAppointmentPhone(user.role === 'DOCTOR' ? user.doctor_id! : doctorId, phoneE164)
+        const relationExists = phoneMatch?.relations.some((relation) => relation.patient_id === patientId) ?? false
+        if (phoneMatch && !relationExists && !relationship) throw new Error('Indica la relación del contacto existente con el paciente.')
+        let resolvedPhoneOwner: 'PATIENT' | 'OTHER' | undefined
+        if (!phoneMatch) {
+          if (phoneOwner !== 'PATIENT' && phoneOwner !== 'OTHER') throw new Error('Indica a quién pertenece el teléfono.')
+          if (phoneOwner === 'OTHER' && (!contactName || !relationship || relationship === 'SELF')) throw new Error('Indica el nombre y la relación del contacto.')
+          resolvedPhoneOwner = phoneOwner
+        }
+        await createManualAppointment(user, doctorId, input, { requested: true, patientMode, patientId, phoneE164, ...(resolvedPhoneOwner ? { phoneOwner: resolvedPhoneOwner } : {}), ...(contactName ? { contactName } : {}), ...(relationship ? { relationship } : {}) }, manualCreationKey)
+      } else if (patientMode === 'NEW') {
+        if (!input.patientName.trim()) throw new Error('Escribe el nombre del paciente.')
+        const phoneMatch = await findManualAppointmentPhone(user.role === 'DOCTOR' ? user.doctor_id! : doctorId, phoneE164)
+        if (phoneMatch && !relationship) throw new Error('Indica la relación del contacto existente con el paciente.')
+        if (!phoneMatch && phoneOwner !== 'PATIENT' && phoneOwner !== 'OTHER') throw new Error('Indica a quién pertenece el teléfono.')
+        if (!phoneMatch && phoneOwner === 'OTHER' && (!contactName || !relationship || relationship === 'SELF')) throw new Error('Indica el nombre y la relación del contacto.')
+        const resolvedPhoneOwner: 'PATIENT' | 'OTHER' | undefined = phoneMatch ? undefined : phoneOwner as 'PATIENT' | 'OTHER'
+        await createManualAppointment(user, doctorId, input, { requested: true, patientMode, patientName: input.patientName, phoneE164, ...(resolvedPhoneOwner ? { phoneOwner: resolvedPhoneOwner } : {}), ...(contactName ? { contactName } : {}), ...(relationship ? { relationship } : {}) }, manualCreationKey)
+      } else {
+        throw new Error('Elige si quieres usar un paciente nuevo o existente.')
+      }
+    }
+  }
+  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo crear la cita.' } }
   revalidatePath('/app/agenda'); revalidatePath(`/master/doctors/${doctorId}/agenda`)
   return { success: 'Cita creada.' }
+}
+
+export type ManualAppointmentLookupState = { error?: string; patients?: ManualAppointmentPatientOption[]; phone?: Awaited<ReturnType<typeof findManualAppointmentPhone>> }
+
+async function authorizedAgendaDoctor(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>, requestedDoctorId: string) {
+  const doctorId = user.role === 'DOCTOR' ? user.doctor_id : requestedDoctorId.trim()
+  if (!doctorId) throw new Error('No tienes permiso para consultar esta agenda.')
+  if (user.role === 'DOCTOR' && requestedDoctorId && requestedDoctorId !== doctorId) throw new Error('No puedes consultar pacientes de otro doctor.')
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('doctors').select('id').eq('id', doctorId).maybeSingle()
+  if (error || !data) throw new Error('El doctor seleccionado no existe.')
+  return doctorId
+}
+
+export async function searchManualAppointmentPatientsAction(doctorId: string, query: string): Promise<ManualAppointmentLookupState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para buscar pacientes.' }
+  if (query.trim().length < 2) return { patients: [] }
+  try { return { patients: await searchManualAppointmentPatients(await authorizedAgendaDoctor(user, doctorId), query) } }
+  catch (error) { return { error: error instanceof Error ? error.message : 'No se pudieron buscar pacientes.' } }
+}
+
+export async function lookupManualAppointmentPhoneAction(doctorId: string, inputPhone: string): Promise<ManualAppointmentLookupState> {
+  const user = await getCurrentUser()
+  if (!user || (user.role !== 'DOCTOR' && user.role !== 'MASTER')) return { error: 'No tienes permiso para buscar contactos.' }
+  try {
+    const targetDoctorId = await authorizedAgendaDoctor(user, doctorId)
+    return { phone: await findManualAppointmentPhone(targetDoctorId, normalizePhoneToE164(inputPhone)) }
+  } catch (error) { return { error: error instanceof Error ? error.message : 'No se pudo buscar el teléfono.' } }
 }
 
 export async function updateAppointmentAction(_previousState: AppointmentActionState, formData: FormData): Promise<AppointmentActionState> {
@@ -573,12 +640,13 @@ export async function startAppointmentConfirmationAction(appointmentId: string, 
 
   const { data: appointment, error: appointmentError } = await supabase
     .from('appointments')
-    .select('id')
+    .select('id, manual_confirmation_requested')
     .eq('id', appointmentId)
     .eq('doctor_id', doctor.id)
     .maybeSingle()
   if (appointmentError) return { error: 'No se pudo validar la cita seleccionada.' }
   if (!appointment) return { error: 'La cita no corresponde al doctor seleccionado.' }
+  if (appointment.manual_confirmation_requested === false) return { error: 'Esta cita no tiene confirmación telefónica activada.' }
 
   try {
     const result = await startAppointmentConfirmationCall(appointmentId)
