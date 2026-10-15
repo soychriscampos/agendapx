@@ -9,6 +9,7 @@ import { UnavailabilityDialog } from '@/components/agenda/unavailability-dialog'
 import { UnavailabilityPanel } from '@/components/agenda/unavailability-panel'
 import { AppointmentCreateDialog } from '@/components/agenda/appointment-create-dialog'
 import { AppointmentDialog } from '@/components/agenda/appointment-dialog'
+import { AppointmentStatusBadges } from '@/components/agenda/appointment-status-badges'
 import { AgendaLiveRefresh } from '@/components/agenda/agenda-live-refresh'
 import type { Appointment } from '@/lib/appointments/appointments'
 
@@ -117,10 +118,6 @@ function eventTime(event: AgendaEvent) {
   return `${event.start}–${event.end}`
 }
 
-function needsAppointmentAttention(appointment: Appointment) {
-  return appointment.confirmationStatus === 'REMINDER_PENDING' || appointment.confirmationStatus === 'MANUAL_REQUIRED'
-}
-
 function AgendaInlineFeedback({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   useEffect(() => {
     const timeout = window.setTimeout(onDismiss, 3_500)
@@ -144,12 +141,11 @@ function MiniEvent({ event, highlighted, onSelect }: { event: AgendaEvent; highl
     <button
       type="button"
       onClick={() => onSelect(event)}
-      aria-label={needsAppointmentAttention(event.item) ? `${event.patient}, requiere revisión` : undefined}
       className={`w-full rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-left text-[13px] text-emerald-950 shadow-sm shadow-emerald-950/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 ${highlighted ? 'agenda-event-update' : ''}`}
     >
-      <p className="font-semibold">{event.patient}</p>
+      <p className="break-words font-semibold">{event.patient}</p>
       <p className="mt-1 text-xs font-medium tabular-nums">{eventTime(event)}</p>
-      {needsAppointmentAttention(event.item) ? <p className="mt-1 flex items-center gap-1 font-medium text-amber-800"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />Revisar</p> : null}
+      <div className="mt-1.5"><AppointmentStatusBadges appointment={event.item} compact /></div>
     </button>
   )
 }
@@ -233,8 +229,8 @@ function MonthAgenda({ date, timezone, unavailability, appointments, highlighted
                 <button type="button" onClick={() => onSelectDay(day)} className="rounded px-1 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900">{day.getDate()}</button>
                 <span className="mt-2 block space-y-1">
                   {dayEvents.slice(0, 2).map((event) => (
-                    <button type="button" key={`${event.kind}-${event.id}`} onClick={() => onSelect(event)} aria-label={event.kind === 'appointment' && needsAppointmentAttention(event.item) ? `${event.patient}, requiere revisión` : undefined} className={`block w-full truncate rounded px-1.5 py-1 text-left text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${event.kind === 'unavailability' ? 'border border-dashed border-zinc-300 text-zinc-500' : `border border-emerald-200 bg-emerald-50 text-emerald-950 ${highlightedAppointmentIds.has(event.id) ? 'agenda-event-update' : ''}`}`}>
-                      {event.kind === 'unavailability' ? event.note?.trim() || 'No disponible' : <span className="inline-flex items-center gap-1">{needsAppointmentAttention(event.item) ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" /> : null}{event.patient}</span>}
+                    <button type="button" key={`${event.kind}-${event.id}`} onClick={() => onSelect(event)} className={`block w-full rounded px-1.5 py-1 text-left text-[11px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-zinc-900 ${event.kind === 'unavailability' ? 'truncate border border-dashed border-zinc-300 text-zinc-500' : `border border-emerald-200 bg-emerald-50 text-emerald-950 ${highlightedAppointmentIds.has(event.id) ? 'agenda-event-update' : ''}`}`}>
+                      {event.kind === 'unavailability' ? event.note?.trim() || 'No disponible' : <span className="grid min-w-0 gap-1"><span className="truncate">{event.patient}</span><AppointmentStatusBadges appointment={event.item} compact /></span>}
                     </button>
                   ))}
                   {dayEvents.length > 2 ? <span className="block px-1.5 text-[11px] text-zinc-400">+{dayEvents.length - 2} más</span> : null}
