@@ -60,7 +60,9 @@
 .landing :global(.wave i) { flex: none; width: 3px; height: var(--h); border-radius: 5px; background: currentColor; animation: hp-voice var(--dur) ease-in-out infinite alternate; animation-delay: var(--delay); }
 @keyframes hp-voice { from { height: 4px; opacity: .5; } to { height: var(--h); opacity: 1; } }
 .landing :global(.transcript) { display: grid; min-height: 197px; align-content: center; gap: 10px; padding: 8px 0 13px; }
-.landing :global(.utterance) { display: grid; grid-template-columns: 60px 1fr; gap: 9px; animation: hp-rise .3s ease both; }
+.landing :global(.utterance) { display: grid; grid-template-columns: 60px 1fr; gap: 9px; }
+.landing :global(.utterance.is-pending) { visibility: hidden; }
+.landing :global(.utterance.is-visible) { animation: hp-rise .3s ease both; }
 .landing :global(.speaker) { color: #777f87; font-size: var(--type-ui); font-weight: var(--weight-medium); }
 .landing :global(.utterance.agent .speaker) { color: var(--blue); }
 .landing :global(.words) { color: #41474d; font-size: var(--type-ui); line-height: 1.5; }
@@ -183,6 +185,7 @@
   .landing :global(.hero) { padding: 36px 0 67px; }
   .landing :global(.call) { padding: 17px; }
   .landing :global(.transcript) { min-height: 224px; }
+  .landing :global(.outcomes) { min-height: max(71px, calc(164px - 15vw)); }
   .landing :global(.section) { padding-block: 73px; }
   .landing :global(.steps), .landing :global(.calc-grid), .landing :global(.footer-grid) { grid-template-columns: 1fr !important; }
   .landing :global(.step + .step) { border-top: 1px solid var(--line); border-left: 0; }
@@ -196,8 +199,12 @@
   .landing :global(.footer-grid) { gap: 30px !important; }
 }
 
+@media (max-width: 360px) {
+  .landing :global(.outcomes) { min-height: 140px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .landing :global(.wave i), .landing :global(.loading i) { animation: none; }
-  .landing :global(.utterance), .landing :global(.outcome) { animation: none; }
+  .landing :global(.utterance.is-visible), .landing :global(.outcome) { animation: none; }
   .landing :global(.reveal) { opacity: 1 !important; transform: none !important; transition: none !important; }
 }

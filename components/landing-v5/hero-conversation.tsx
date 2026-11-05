@@ -18,7 +18,7 @@ const lines: Utterance[] = [
 const barHeights = Array.from({ length: 19 }, (_, index) => 6 + Math.round(Math.abs(Math.sin(index * 0.81) * Math.cos(index * 0.16)) * 22))
 
 export default function HeroConversation() {
-  const [transcript, setTranscript] = useState<Utterance[]>([])
+  const [visibleLineCount, setVisibleLineCount] = useState(0)
   const [outcomes, setOutcomes] = useState<Outcome[]>([])
   const [speaker, setSpeaker] = useState<Speaker>('HelloPx')
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -41,12 +41,12 @@ export default function HeroConversation() {
 
     const cycle = () => {
       clearTimers()
-      setTranscript([])
+      setVisibleLineCount(0)
       setOutcomes([])
       setIsSpeaking(false)
 
       if (reducedMotion) {
-        setTranscript(lines)
+        setVisibleLineCount(lines.length)
         setSpeaker('Px')
         setIsSpeaking(false)
         setOutcomes([
@@ -57,7 +57,7 @@ export default function HeroConversation() {
       }
 
       lines.forEach((line, index) => later(() => {
-        setTranscript((current) => [...current, line])
+        setVisibleLineCount(index + 1)
         setSpeaker(line.who)
         setIsSpeaking(true)
       }, 450 + index * 1850))
@@ -100,7 +100,10 @@ export default function HeroConversation() {
         </div>
       </div>
       <div className="transcript" aria-live="off">
-        {transcript.map((line, index) => <div key={`${index}-${line.who}`} className={`utterance ${line.who === 'HelloPx' ? 'agent' : ''}`}><span className="speaker">{line.who}</span><span className="words">{line.text}</span></div>)}
+        {lines.map((line, index) => {
+          const isVisible = index < visibleLineCount
+          return <div key={`${index}-${line.who}`} className={`utterance ${line.who === 'HelloPx' ? 'agent' : ''} ${isVisible ? 'is-visible' : 'is-pending'}`} aria-hidden={!isVisible}><span className="speaker">{line.who}</span><span className="words">{line.text}</span></div>
+        })}
       </div>
       <div className="outcomes">
         {outcomes.map((outcome) => outcome.kind === 'loading'
