@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+html:has(#hellopx-landing) {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(#hellopx-landing) {
+    scroll-behavior: auto;
+  }
+}
+
 @keyframes hero-step-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

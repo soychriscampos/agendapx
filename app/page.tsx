@@ -1,107 +1,136 @@
-import Link from 'next/link'
 import Image from 'next/image'
+import Link from 'next/link'
+import type { CSSProperties } from 'react'
 
-import HeroCallFlow from '@/components/hero-call-flow'
-import ScrollReveal from '@/components/scroll-reveal'
+import AppointmentCalculator from '@/components/appointment-calculator'
+import HeroConversation from '@/components/landing-v5/hero-conversation'
+import LandingEnhancements from '@/components/landing-v5/landing-enhancements'
+import ModeSelector from '@/components/landing-v5/mode-selector'
 import { redirectAuthenticatedUser } from '@/lib/auth'
+import styles from './landing.module.css'
 
-const capabilities = [
-  {
-    title: 'Atiende llamadas',
-    description: 'Responde a tus pacientes y resuelve dudas frecuentes.',
-  },
-  {
-    title: 'Gestiona citas',
-    description: 'Consulta tu disponibilidad y ayuda a agendar, reprogramar o cancelar.',
-  },
-  {
-    title: 'Confirma citas por ti',
-    description: 'Llama a tus pacientes antes de su cita para confirmar su asistencia.',
-  },
-  {
-    title: 'Sigue tus reglas',
-    description: 'Trabaja con tus horarios, tipos de cita y la información que tú autorices.',
-  },
+const faqs = [
+  ['¿Puedo activar y desactivar HelloPx cuando quiera?', 'Sí. La idea es que entre en acción en el momento que lo necesites.'],
+  ['¿Qué pasa si salgo a un congreso o de vacaciones?', 'Sólo basta con bloquear esos días y HelloPx no ofrecerá citas mientras no estés.'],
+  ['¿Necesito cambiar el número de mi consultorio?', 'No. Tus pacientes siguen llamando al número de siempre. HelloPx recibe las llamadas mediante el desvío de tu línea, siempre que sea compatible.'],
+  ['¿Y si mi línea no permite desvío de llamadas?', 'Revisamos contigo las alternativas disponibles para tu línea.'],
+  ['¿Puede trabajar junto con mi recepcionista?', 'Por supuesto. Y de hecho puede ayudarle a recibir las llamadas mientras atiende a los px que están en tu consultorio, así no se descuida nada.'],
+  ['Sólo estoy yo en mi consultorio, ¿HelloPx es para mí?', 'HelloPx puede encargarse de todo el trabajo de recepción de llamadas mientras tú te enfocas en la consulta. Así que la respuesta es sí.'],
+  ['¿HelloPx cuenta con agenda?', 'Sí. Esta agenda permite al asistente consultar disponibilidad, agendar y ver a quiénes llamar para confirmar su cita. Pero también tanto el asistente como tú, o alguien de tu equipo, pueden agregar citas o cancelarlas de manera manual.'],
 ]
+
+function VoiceWave({ id, bars }: { id: string; bars: number }) {
+  return (
+    <span className="wave" id={id} aria-hidden="true">
+      {Array.from({ length: bars }, (_, index) => {
+        const height = 7 + Math.round(Math.abs(Math.sin(index * 0.81) * Math.cos(index * 0.16)) * 30)
+        const style = { '--h': `${height}px`, '--dur': `${0.7 + (index % 6) * 0.13}s`, '--delay': `${-index * 0.08}s` } as CSSProperties
+        return <i key={index} style={style} />
+      })}
+    </span>
+  )
+}
 
 export default async function Home() {
   await redirectAuthenticatedUser()
 
   return (
-    <main className="min-h-screen bg-white text-zinc-950">
-      <div className="relative isolate overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 opacity-65"
-          style={{
-            backgroundImage: 'linear-gradient(to right, rgba(39,39,42,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(39,39,42,0.04) 1px, transparent 1px), linear-gradient(to right, rgba(39,39,42,0.018) 1px, transparent 1px), linear-gradient(to bottom, rgba(39,39,42,0.018) 1px, transparent 1px)',
-            backgroundSize: '40px 40px, 40px 40px, 160px 160px, 160px 160px',
-            maskImage: 'radial-gradient(ellipse 82% 90% at 50% 0%, black 0%, black 38%, transparent 100%)',
-            WebkitMaskImage: 'radial-gradient(ellipse 82% 90% at 50% 0%, black 0%, black 38%, transparent 100%)',
-          }}
-        />
-        <header className="relative z-10 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-[-0.03em] text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900"><Image src="/logo.png?v=2" alt="" width={32} height={32} />HelloPx</Link>
-        <Link href="/login" className="-mr-3 -my-1 inline-flex items-center px-3 py-3 text-sm font-medium text-[#258db0] underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-zinc-950 hover:decoration-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Iniciar sesión</Link>
-        </header>
+    <div className={`${styles.landing} flex min-h-screen flex-col bg-white text-zinc-900`}>
+      <header className="nav wrap">
+        <Link href="/" className="brand"><Image src="/logo.png?v=2" alt="" width={28} height={28} />HelloPx</Link>
+        <nav aria-label="Navegación principal">
+          <a href="#como">Cómo funciona</a>
+          <a href="#calculadora">Calculadora</a>
+          <a href="#faq">FAQ</a>
+          <button className="btn rounded-lg bg-zinc-900 text-sm font-medium text-white" data-demo type="button">Agenda tu demo</button>
+        </nav>
+      </header>
 
-        <div className="relative z-10 mx-auto max-w-6xl px-6 lg:px-8">
-        <section className="grid items-center gap-16 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.78fr)] lg:gap-24 lg:py-28">
-          <div className="max-w-2xl">
-            <p className="text-sm font-medium text-zinc-600">Asistente virtual para consultorios médicos</p>
-            <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-[-0.055em] text-zinc-950 sm:text-6xl sm:leading-[1.04]">HelloPx es el asistente de citas de tu consultorio.</h1>
-            <p className="mt-7 max-w-xl text-lg leading-8 text-zinc-600">Atiende llamadas, consulta la disponibilidad de tu agenda y ayuda a tus pacientes a gestionar sus citas.</p>
-            <p className="mt-4 max-w-xl text-base leading-7 text-zinc-600">Puede encargarse de todas tus llamadas o entrar en acción solamente cuando tú o tu equipo no puedan atender.</p>
-            <p className="mt-5 max-w-xl text-sm leading-6 text-zinc-600">Tus pacientes siguen llamando al número que ya conocen.</p>
-            <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
-              <a href="mailto:hellopx.app@gmail.com?subject=Quiero%20probar%20HelloPx" className="inline-flex items-center justify-center rounded-full bg-zinc-950 px-5 py-3 text-sm font-medium text-white transition-transform hover:bg-zinc-800 active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Quiero probar HelloPx</a>
+      <main id="hellopx-landing" className="flex-1">
+        <section className="hero">
+          <div className="wrap hero-grid">
+            <div>
+              <h1>El teléfono de tu consultorio <span className="blue">siempre contesta,</span> incluso fuera de horario.</h1>
+              <p className="lead">HelloPx es un asistente de voz con inteligencia artificial. Atiende llamadas, agenda citas y llama para confirmarlas.</p>
+              <button className="btn rounded-lg bg-zinc-900 text-sm font-medium text-white" data-demo type="button">Agenda tu demo ↗</button>
             </div>
+            <HeroConversation />
           </div>
-
-          <HeroCallFlow />
         </section>
+
+        <section className="section wrap reveal" id="como" data-reveal>
+          <p className="eyebrow">CÓMO FUNCIONA</p>
+          <h2 className="how-title">Contesta el teléfono, atiende a tus px y agenda tus citas.</h2>
+          <div className="steps">
+            <article className="step"><p className="step-label">01 · CONECTA</p><h3>Tu mismo número.</h3><p>Hacemos el enlace con tu línea actual. Tus px marcan y reciben llamadas del número que ya conocen (plan celular o sígueme para fijos).</p></article>
+            <article className="step"><p className="step-label">02 · CONVERSA</p><h3>Voz humana y en español.</h3><p>HelloPx atiende como lo haría cualquier asistente siguiendo las reglas de tu consultorio, resolviendo dudas y contestando de inmediato.</p></article>
+            <article className="step"><p className="step-label">03 · CITAS</p><h3>Agenda y recordatorios.</h3><p>El asistente consulta disponibilidad y se pone de acuerdo con tu px para concretar una cita. También llamará para confirmarlas.</p></article>
+          </div>
+        </section>
+
+        <section className="statement reveal" data-reveal><div className="wrap"><h2>Integra al <i>team</i> de tu consultorio o clínica a un asistente disponible <span>24/7</span>.</h2></div></section>
+
+        <section className="section choice reveal" data-reveal>
+          <div className="wrap choice-grid">
+            <div>
+              <h2>Tú decides cuándo entra en <span className="blue">acción.</span></h2>
+              <ModeSelector />
+              <p className="mode-end">Activa o desactiva cuando lo necesites. Así, si alguien llama para pedir información o intentar agendar, siempre será atendido.</p>
+            </div>
+            <aside className="rules">
+              <h3>Reglas de tu consultorio</h3>
+              <ul><li>Horarios de atención</li><li>Tipos de cita</li><li>Preguntas que hace al paciente</li><li>Confirmaciones</li><li>Información que puede dar</li><li>Días bloqueados</li></ul>
+            </aside>
+          </div>
+        </section>
+
+        <section className="section wrap reveal" id="calculadora" data-reveal>
+          <h2>Cuánto vale <span className="blue">lo que hoy se pierde</span> por teléfono.</h2>
+          <p className="calc-intro">Cada llamada es un posible px, descubre cuánto te están costando esas oportunidades. Desliza según tus estimaciones:</p>
+          <AppointmentCalculator />
+        </section>
+
+        <section className="audio-section reveal" data-reveal>
+          <div className="wrap audio-center">
+            <p className="eyebrow">ESCUCHA A HELLOPX EN ACCIÓN</p>
+            <h2>Descubre cómo sería hablar con el asistente.</h2>
+            <button type="button" className="audio-visual" aria-label="Vista previa del reproductor; no hay audio cargado" disabled><VoiceWave id="audio-wave" bars={31} /></button>
+            <p className="audio-disclaimer">Este audio representa una llamada con el asistente. Se utiliza la voz de HelloPx; el doctor y sus datos son ficticios para esta prueba.</p>
+            <button className="btn light rounded-lg text-sm font-medium" data-demo type="button">Agenda tu demo ↗</button>
+          </div>
+        </section>
+
+        <section className="section wrap limits reveal" data-reveal>
+          <h2>Lo que HelloPx <span className="blue">no hace.</span></h2>
+          <p><strong>No da consejo médico. No diagnostica ni receta.</strong> Sólo gestiona citas e información administrativa autorizada.</p>
+        </section>
+
+        <section className="section wrap faq reveal" id="faq" data-reveal>
+          <h2>Preguntas frecuentes.</h2>
+          <div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div>
+        </section>
+
+        <section className="final reveal" data-reveal>
+          <div className="wrap">
+            <h2>Sé de los primeros en conocer HelloPx.</h2>
+            <p>Estamos construyendo el futuro con nuestros primeros consultorios y una mejor forma de atender llamadas, gestionar citas y dar seguimiento a tus px.</p>
+            <button className="btn rounded-lg bg-zinc-900 text-sm font-medium text-white" data-demo type="button">Agenda tu demo ↗</button>
+            <small>Sin compromiso de contratación.</small>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <div className="wrap">
+          <div className="footer-grid">
+            <div><Link href="/" className="brand"><Image src="/logo.png?v=2" alt="" width={28} height={28} />HelloPx</Link><p>Asistente de voz con IA para consultorios. Contesta cuando lo necesites para que nunca dejes de atender las llamadas, incluso fuera de horario.</p></div>
+            <div><h3>PRODUCTO</h3><a href="#como">Cómo funciona</a><a href="#calculadora">Calculadora</a><a href="#faq">FAQ</a></div>
+            <div><h3>LEGAL</h3><Link href="/terms">Términos</Link><Link href="/privacy">Privacidad</Link><Link href="/data-deletion">Eliminación de datos</Link></div>
+          </div>
+          <div className="footer-bottom"><span>© HelloPx · <a href="https://x.com/soychriscampos">Christian Campos</a> · <span>{new Date().getFullYear()}</span></span><span>Hecho con <span className="heart">♥</span> en México</span></div>
         </div>
-      </div>
-
-      <div className="mx-auto max-w-6xl px-6 lg:px-8">
-        <ScrollReveal><section id="que-hace" className="grid gap-12 border-b border-zinc-200 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-28">
-          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Tu consultorio sigue atendiendo, incluso cuando tú no puedes contestar.</h2>
-          <div className="max-w-2xl">
-            <p className="max-w-xl text-lg leading-8 text-zinc-600">Mientras estás en consulta, atendiendo a un paciente o fuera del consultorio, alguien puede estar llamando para pedir información o intentar agendar.</p>
-            <p className="mt-7 border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">Mientras tú atiendes a un paciente, HelloPx puede estar atendiendo al siguiente.</p>
-            <ul className="mt-10 divide-y divide-zinc-200 border-y border-zinc-200">
-              {capabilities.map((capability) => <li key={capability.title} className="py-5 sm:py-6"><p className="text-base font-medium text-zinc-950">{capability.title}</p><p className="mt-2 text-sm leading-6 text-zinc-600">{capability.description}</p></li>)}
-            </ul>
-          </div>
-        </section></ScrollReveal>
-
-        <ScrollReveal><section className="grid gap-10 border-b border-zinc-200 py-16 sm:py-20 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-24">
-          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Menos interrupciones. Más capacidad.</h2>
-          <div className="max-w-2xl">
-            <p className="text-lg leading-8 text-zinc-600">HelloPx se ocupa de llamadas y tareas repetitivas alrededor de tu agenda para que tú y tu equipo puedan concentrarse en los pacientes.</p>
-            <div className="mt-10 grid gap-6 border-t border-zinc-200 pt-6 sm:grid-cols-3 sm:gap-4">
-              <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">24/7</p><p className="mt-1 text-sm leading-6 text-zinc-600">Puede atender aunque tu equipo no esté disponible.</p></div>
-              <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">Confirmaciones</p><p className="mt-1 text-sm leading-6 text-zinc-600">No dependas de recordar cada llamada.</p></div>
-              <div><p className="text-lg font-semibold tracking-[-0.03em] text-zinc-950">Más llamadas atendidas</p><p className="mt-1 text-sm leading-6 text-zinc-600">Sin ampliar proporcionalmente tu estructura.</p></div>
-            </div>
-          </div>
-        </section></ScrollReveal>
-
-        <ScrollReveal><section className="grid gap-10 py-20 sm:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-28">
-          <h2 className="max-w-md text-3xl font-semibold tracking-[-0.04em] text-zinc-950 sm:text-4xl sm:leading-tight">Tú decides cómo trabaja HelloPx.</h2>
-          <div className="max-w-2xl">
-            <p className="text-lg leading-8 text-zinc-600">Define tus horarios, tipos de cita, información autorizada y reglas del consultorio. HelloPx se encarga de seguirlas.</p>
-            <p className="mt-7 border-l border-zinc-300 pl-5 text-sm leading-6 text-zinc-600">HelloPx apoya la operación administrativa del consultorio. No proporciona diagnósticos, recetas ni asesoramiento médico.</p>
-            <div className="mt-14 border-t border-zinc-200 pt-12">
-              <h3 className="text-2xl font-semibold tracking-[-0.035em] text-zinc-950 sm:text-3xl">¿Quieres ser de los primeros en probarlo?</h3>
-              <p className="mt-5 text-lg leading-8 text-zinc-600">Estamos incorporando nuestros primeros consultorios.</p>
-              <a href="mailto:hellopx.app@gmail.com?subject=Quiero%20probar%20HelloPx" className="mt-8 inline-flex items-center justify-center rounded-full bg-zinc-950 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-zinc-900">Quiero probar HelloPx</a>
-            </div>
-          </div>
-        </section></ScrollReveal>
-
-        <footer className="flex flex-col gap-4 border-t border-zinc-200 py-7 text-sm text-zinc-500 sm:flex-row sm:items-center sm:justify-between"><span>© HelloPx</span><div className="flex flex-wrap items-center gap-x-5 gap-y-2"><Link href="/privacy" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Privacidad</Link><Link href="/terms" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Términos</Link><Link href="/data-deletion" className="text-[#258db0] underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950">Eliminación de datos</Link><a className="underline decoration-zinc-300 underline-offset-4 hover:text-zinc-950 hover:decoration-zinc-950" href="mailto:hellopx@gmail.com"></a></div></footer>
-      </div>
-    </main>
+      </footer>
+      <LandingEnhancements />
+    </div >
   )
 }
