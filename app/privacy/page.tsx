@@ -9,6 +9,27 @@ export const metadata: Metadata = {
 
 const sections = [
   {
+    title: 'Encuesta para médicos y llamadas de demostración',
+    content: (
+      <>
+        <p>HelloPx realiza encuestas dirigidas a profesionales de la salud para conocer cómo gestionan las llamadas de sus pacientes, identificar necesidades operativas y mejorar sus servicios.</p>
+        <h3>Información recopilada</h3>
+        <p>Al participar en la encuesta, recopilamos las respuestas proporcionadas, la fecha de participación y determinados datos técnicos necesarios para el funcionamiento y seguridad del servicio.</p>
+        <p>También registramos si decides conocer HelloPx mediante una llamada de prueba y si solicitas información adicional o una demostración personalizada.</p>
+        <h3>Llamadas de demostración</h3>
+        <p>Las llamadas de prueba son atendidas por un asistente virtual con inteligencia artificial que simula la atención telefónica de un consultorio médico.</p>
+        <p>Estas conversaciones pueden ser grabadas, transcritas y analizadas para evaluar el funcionamiento del asistente, detectar errores y mejorar la calidad del servicio.</p>
+        <p>Durante las llamadas también pueden procesarse datos técnicos, como el número telefónico desde el que se realiza la llamada, su duración y fecha.</p>
+        <p>Las demostraciones utilizan información ficticia. Se solicita a los participantes no compartir datos reales de pacientes, información médica sensible ni otros datos personales innecesarios.</p>
+        <p>Las grabaciones y transcripciones se conservarán durante el periodo establecido en nuestras políticas de retención y podrán eliminarse antes cuando proceda conforme a la legislación aplicable.</p>
+        <h3>Seguimiento comercial</h3>
+        <p>Si manifiestas interés en conocer o contratar HelloPx, podremos solicitar tu nombre y un medio de contacto.</p>
+        <p>Estos datos se utilizarán para atender tu solicitud, proporcionarte información sobre nuestros servicios o coordinar una demostración personalizada, de acuerdo con las autorizaciones que otorgues.</p>
+        <p>Puedes solicitar el acceso, rectificación, cancelación u oposición al tratamiento de tus datos personales, así como revocar tu consentimiento cuando corresponda, escribiendo a <a href="mailto:hellopx.app@gmail.com">hellopx.app@gmail.com</a>.</p>
+      </>
+    ),
+  },
+  {
     title: '1. Información que recopilamos',
     content: (
       <>

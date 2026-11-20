@@ -3,6 +3,7 @@ import { InviteDoctor } from '@/app/master/doctors/invite-doctor'
 import { DoctorTable } from '@/app/master/doctors/doctor-table'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import Link from 'next/link'
 
 export default async function MasterDoctorsPage() {
   const user = await requireRole('MASTER')
@@ -29,6 +30,7 @@ export default async function MasterDoctorsPage() {
             <button type="submit" className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100">Cerrar sesión</button>
           </form>
         </header>
+        <nav aria-label="Secciones MASTER" className="mt-7 flex gap-2 border-b border-zinc-200 text-sm font-medium"><Link href="/master/doctors" aria-current="page" className="border-b-2 border-zinc-900 px-4 py-3 text-zinc-950">Doctores</Link><Link href="/master/encuesta" className="px-4 py-3 text-zinc-600 hover:text-zinc-950">Encuesta</Link></nav>
         <section className="mt-8 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
           <div className="flex items-center justify-between gap-4 border-b border-zinc-200 px-6 py-4">
             <h2 className="text-sm font-semibold text-zinc-900">Doctores registrados</h2>
