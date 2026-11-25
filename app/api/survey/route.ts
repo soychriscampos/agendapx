@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { validateAnswers } from '@/lib/survey/questions'
+import { validateCommercialInterest, validateV1Answers, validateV2Answers } from '@/lib/survey/questions'
 
 const cookieName = 'hellopx_survey'
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
   if (!row) return NextResponse.json({ state: 'new' })
   return NextResponse.json({
     state: row.status, wants_demo: row.wants_demo,
-    commercial_interest: row.commercial_interest, demo_call_clicked: !!row.demo_call_clicked_at,
+    survey_version: row.survey_version, commercial_interest: row.commercial_interest,
+    demo_call_clicked: !!row.demo_call_clicked_at,
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
@@ -53,12 +54,13 @@ export async function POST(request: NextRequest) {
     if (!token) return fail('No se pudo validar el inicio. Intenta de nuevo.')
     const tokenHash = hash(token)
     const existing = await session(request)
-    if (existing) return NextResponse.json({ state: existing.status })
+    if (existing?.survey_version === 'v2') return NextResponse.json({ state: existing.status, survey_version: 'v2' })
     const { data: prior, error: priorError } = await admin.from('commercial_survey_responses')
-      .select('id, status').eq('session_token_hash', tokenHash).maybeSingle()
+      .select('id, status, survey_version').eq('session_token_hash', tokenHash).maybeSingle()
     if (priorError) return fail('No pudimos validar el inicio. Intenta de nuevo.', 503)
     if (prior) {
-      const response = NextResponse.json({ state: prior.status })
+      if (prior.survey_version !== 'v2') return NextResponse.json({ state: 'legacy' })
+      const response = NextResponse.json({ state: prior.status, survey_version: 'v2' })
       response.cookies.set(cookieName, `${prior.id}.${token}`, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/survey', maxAge: 60 * 60 * 24 * 30 })
       return response
     }
@@ -70,17 +72,18 @@ export async function POST(request: NextRequest) {
     if (countError) return fail('No pudimos iniciar la encuesta. Intenta más tarde.', 503)
     if ((count ?? 0) >= 20) return fail('Has iniciado demasiadas encuestas. Intenta más tarde.', 429)
     const id = randomUUID()
-    const { error } = await admin.from('commercial_survey_responses').insert({ id, session_token_hash: tokenHash, ip_hash: ipHash })
+    const { error } = await admin.from('commercial_survey_responses').insert({ id, session_token_hash: tokenHash, ip_hash: ipHash, survey_version: 'v2' })
     if (error) {
       // A simultaneous retry can win the unique-token insert after this request's lookup.
       const { data: raced } = await admin.from('commercial_survey_responses')
-        .select('id, status').eq('session_token_hash', tokenHash).maybeSingle()
+        .select('id, status, survey_version').eq('session_token_hash', tokenHash).maybeSingle()
       if (!raced) return fail('No pudimos iniciar la encuesta. Intenta de nuevo.', 503)
-      const response = NextResponse.json({ state: raced.status })
+      if (raced.survey_version !== 'v2') return NextResponse.json({ state: 'legacy' })
+      const response = NextResponse.json({ state: raced.status, survey_version: 'v2' })
       response.cookies.set(cookieName, `${raced.id}.${token}`, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/survey', maxAge: 60 * 60 * 24 * 30 })
       return response
     }
-    const response = NextResponse.json({ state: 'started' })
+    const response = NextResponse.json({ state: 'started', survey_version: 'v2' })
     response.cookies.set(cookieName, `${id}.${token}`, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/survey', maxAge: 60 * 60 * 24 * 30 })
     return response
   }
@@ -89,27 +92,73 @@ export async function POST(request: NextRequest) {
   if (!row) return fail('Tu sesión venció. Recarga la encuesta para comenzar de nuevo.', 401)
   if (action === 'complete') {
     if (row.status === 'completed') return NextResponse.json({ state: 'completed' })
-    const answers = validateAnswers(body.answers)
+    if (row.survey_version === 'v2') {
+      const answers = validateV2Answers(body.answers)
+      const interest = body.interest
+      if (!answers || !validateCommercialInterest(interest)) return fail('Revisa que todas las respuestas estén completas.')
+
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      const method = body.method
+      const value = typeof body.value === 'string' ? body.value.trim() : ''
+      const consent = body.consent === true
+      const hasContact = !!name || !!value || method != null
+      if (interest === 'none' && hasContact) return fail('No guardamos datos de contacto si no deseas seguimiento.')
+      if (hasContact && (name.length < 2 || name.length > 120 || method !== 'whatsapp' ||
+        !/^\+?[0-9\s()-]{8,25}$/.test(value) || !consent)) {
+        return fail('Completa tu nombre y WhatsApp y acepta el consentimiento para que podamos contactarte.')
+      }
+
+      const { error } = await admin.from('commercial_survey_responses').update({
+        ...answers,
+        survey_version: 'v2',
+        assistant_usefulness: null,
+        commercial_interest: interest,
+        contact_name: hasContact ? name : null,
+        contact_method: hasContact ? 'whatsapp' : null,
+        contact_value: hasContact ? value : null,
+        contact_consent_at: hasContact ? new Date().toISOString() : null,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      }).eq('id', row.id).eq('status', 'started')
+      if (error) return fail('No pudimos guardar tus respuestas. Intenta de nuevo.', 503)
+      return NextResponse.json({ state: 'completed' })
+    }
+
+    const answers = validateV1Answers(body.answers)
     if (!answers) return fail('Revisa que todas las respuestas estén completas.')
     const { error } = await admin.from('commercial_survey_responses').update({ ...answers, status: 'completed', completed_at: new Date().toISOString() })
       .eq('id', row.id).eq('status', 'started')
     if (error) return fail('No pudimos guardar tus respuestas. Intenta de nuevo.', 503)
     return NextResponse.json({ state: 'completed' })
   }
-  if (row.status !== 'completed') return fail('Termina primero las siete preguntas.')
   if (action === 'demo') {
-    if (typeof body.wants_demo !== 'boolean' || row.wants_demo !== null) return fail('Decisión inválida.')
+    if (typeof body.wants_demo !== 'boolean' ||
+      (row.survey_version !== 'v2' && row.status !== 'completed')) return fail('Decisión inválida.')
+    if (row.wants_demo !== null) {
+      if (row.wants_demo === body.wants_demo || (row.survey_version === 'v2' && row.wants_demo && body.wants_demo === false)) {
+        return NextResponse.json({ ok: true })
+      }
+      return fail('Decisión inválida.')
+    }
     const { error } = await admin.from('commercial_survey_responses').update({ wants_demo: body.wants_demo }).eq('id', row.id).is('wants_demo', null)
     if (error) return fail('No pudimos guardar tu decisión.', 503)
     return NextResponse.json({ ok: true })
   }
   if (action === 'call') {
-    if (row.wants_demo !== true) return fail('Primero confirma que quieres conocer HelloPx.')
-    const { error } = await admin.from('commercial_survey_responses').update({ demo_call_clicked_at: row.demo_call_clicked_at || new Date().toISOString() }).eq('id', row.id)
+    if ((row.survey_version === 'v2' && row.wants_demo === false) ||
+      (row.survey_version !== 'v2' && (row.status !== 'completed' || row.wants_demo !== true))) {
+      return fail('Primero confirma que quieres conocer HelloPx.')
+    }
+    const { error } = await admin.from('commercial_survey_responses').update({
+      ...(row.survey_version === 'v2' ? { wants_demo: true } : {}),
+      demo_call_clicked_at: row.demo_call_clicked_at || new Date().toISOString(),
+    }).eq('id', row.id)
     if (error) return fail('No pudimos registrar el clic.', 503)
     return NextResponse.json({ ok: true })
   }
   if (action === 'interest') {
+    if (row.survey_version === 'v2') return fail('La respuesta de interés se guarda al finalizar la encuesta.')
+    if (row.status !== 'completed') return fail('Termina primero las siete preguntas.')
     if (row.commercial_interest !== null || row.wants_demo === null) return fail('Decisión inválida.')
     const interest = body.interest
     if (!['personalized_demo', 'information', 'none'].includes(String(interest))) return fail('Selecciona una opción.')
